@@ -1,45 +1,57 @@
 # HANDOFF.md
 
-Current state as of 2026-08-06 (Phase 0 gate).
+Current state as of 2026-08-06 ~19:20 UTC (Phase 1 complete and functionally tested).
 
-## Just completed — Phase 0 (built, verified, NOT yet committed)
+## Just completed — Phase 1
 
-- Next.js 16.3.0 scaffold (TS strict, Tailwind v4 CSS-first, npm) at repo root.
-- `supabase/migrations/20260806000000_init.sql`: all 10 tables per PLAN.md, RLS on all,
-  `anon_read` select policies on the 4 public tables only, Realtime publication on
-  `rooms, players, tasks, task_occupancy`. **Applied to the live project** via
-  `supabase db push` — confirmed "Finished supabase db push."
-- `lib/supabase/server.ts` (`supabaseAdmin()`, `import "server-only"`, lazy env read)
-  and `lib/supabase/browser.ts` (`supabaseBrowser()` singleton, anon key only).
-- `.env.local` (gitignored) has the URL; `.env.example` committed-ready.
-- `npm run build` passes (verified this session).
-- Docs committed alone first (commit 203b2b9): CLAUDE.md, GAMERULES.md, PLAN.md, .gitignore.
+- All 7 routes (`/api/room, join, state, tasks, settings, start-round, me`), lib
+  helpers, and screens (`/`, `/join/[code]`, `/host/[code]`, `/room/[code]`) built
+  (Sonnet subagent, orchestrator-QA'd). Build + lint clean.
+- Two fixes found in QA / functional test:
+  1. `/api/me` fellow-imposter query leaked imposter names across rooms sharing a
+     round number — fixed with an inner join on players scoped to room_code
+     (comment in `app/api/me/route.ts` marks it load-bearing).
+  2. `service_role` had NO table privileges on this project (42501 on every server
+     query) even though anon had its expected grants — empirical discrepancy vs
+     Supabase docs. Fixed by `supabase/migrations/20260806190000_service_role_grants.sql`
+     (applied to live). Any future table needs no action (default privileges set).
+- Functional pass against live Supabase, all 37 checks green: 4p/1imp and 6p/2imp
+  lobbies run concurrently; duplicate-name 409; wrong-PIN and non-host 403;
+  2-imposters-on-4-players rejected at both validation and start; role deal exact;
+  solo imposter sees no partners, 2 imposters see each other (and not the other
+  room's); per-player task samples correct; tasks_total = crew × sample (9 and 20);
+  `/state` playing view leak-free; cross-room state 403; garbage token 401;
+  serverTime everywhere. Test rooms deleted from live DB afterward.
+- `.env.local` now has real anon + service role keys (owner pasted).
 
 ## In progress / where it stopped
 
-Stopped at the Phase 0 gate on the owner's instruction: owner verifies the two Phase 0
-acceptance criteria in the Supabase dashboard, then confirms before Phase 1 starts.
-Phase 0 code is uncommitted pending that confirmation; commit as
-`Phase 0 complete: scaffold, schema, RLS, realtime, supabase clients` once confirmed.
+Phase 1 committed at the boundary. Nothing half-done. Owner may still want the
+4-browser-profile visual check from PLAN.md Phase 1 (script can't see rendered UI).
 
 ## Next steps (priority order)
 
-1. Owner pastes anon key + service role key into `.env.local` (Dashboard → Project
-   Settings → API keys). **Phase 1 is blocked without them.**
-2. Owner confirms acceptance criteria → commit Phase 0.
-3. Phase 1 per PLAN.md: create/join, roster Realtime, task editor, settings,
-   start-round, `/me`.
+1. Phase 2 (PLAN.md): task claim/complete/abandon with capacity 2, white task
+   screen, task bar, server-side 1-5s delayed reveal (`reveal_at`), `/api/tick`
+   recompute of `tasks_done`.
+2. Then Phase 3 gathering (do NOT half-build it — deadlock risk, see PLAN).
+
+## Open decisions / blockers
+
+- None blocking. Accepted judgment calls: settings auto-save per change; native
+  checkboxes on host-only settings; `set-state-in-effect` lint handled via
+  derived-state pattern.
+- `players` DELETE realtime events won't fire without `REPLICA IDENTITY FULL`
+  (not set). Irrelevant until something removes players; poll fallback covers it.
 
 ## Operational notes a fresh session would lack
 
 - DB credentials in `supabasedetails.md` (gitignored, never commit). Project ref
   `nxrgkcmnxetiyqnmrrqh`.
-- Direct db host `db.nxrgkcmnxetiyqnmrrqh.supabase.co` is IPv6-only and unreachable
-  from this machine. Use the IPv4 session pooler: host
-  `aws-0-us-east-1.pooler.supabase.com:5432`, user `postgres.nxrgkcmnxetiyqnmrrqh`,
-  password URL-encoded (`@#$` → `%40%23%24`). `npx supabase db push --db-url "..."`
-  works without `supabase login`. aws-1 pooler rejects this tenant; it lives on aws-0.
-- CLAUDE.md invariants 3–4 name a `task_locks` table that doesn't exist in PLAN.md's
-  schema; PLAN's `task_occupancy` (+ `tasks`) is what was built and published. Flagged
-  to owner 2026-08-06; treat CLAUDE.md's list as stale on this point.
+- Direct db host is IPv6-only and unreachable from this machine. Migrations:
+  `npx supabase db push --db-url
+  "postgresql://postgres.nxrgkcmnxetiyqnmrrqh:<URL-ENCODED-PW>@aws-0-us-east-1.pooler.supabase.com:5432/postgres"`
+  (password chars `@#$` → `%40%23%24`; no login needed; tenant on aws-0 only).
+- Functional test scripts live in this session's scratchpad (`test-phase1.mjs`,
+  `cleanup-test-rooms.mjs`) — session-specific, rewrite if needed, don't commit.
 - `AGENTS.md` is auto-generated by `next dev` — commit it, don't fight it.
