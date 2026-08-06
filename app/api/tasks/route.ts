@@ -12,7 +12,7 @@ const taskSchema = z.object({
 
 const bodySchema = z.object({
   pin: z.string().regex(/^\d{4}$/, "PIN must be exactly 4 digits"),
-  tasks: z.array(taskSchema).min(1, "Add at least 1 task"),
+  tasks: z.array(taskSchema),
 });
 
 export async function POST(req: Request) {
@@ -53,9 +53,11 @@ export async function POST(req: Request) {
     description: task.description && task.description.length > 0 ? task.description : null,
   }));
 
-  const { error: insertError } = await admin.from("tasks").insert(rows);
-  if (insertError) {
-    return errorJson("Failed to update tasks", 500);
+  if (rows.length > 0) {
+    const { error: insertError } = await admin.from("tasks").insert(rows);
+    if (insertError) {
+      return errorJson("Failed to update tasks", 500);
+    }
   }
 
   return json({ ok: true });

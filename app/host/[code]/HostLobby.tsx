@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, getCode, getPin, getToken } from "@/lib/client";
@@ -48,13 +48,15 @@ export default function HostLobby({ code }: { code: string }) {
   const router = useRouter();
   const [state, setState] = useState<StateResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const fetchSeq = useRef(0);
 
-  const [taskDraft, setTaskDraft] = useState<EditableTask[]>([]);
-  const [syncedTasks, setSyncedTasks] = useState<TaskRow[] | null>(null);
-  const [taskDraftDirty, setTaskDraftDirty] = useState(false);
-  const [savingTasks, setSavingTasks] = useState(false);
-  const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
+  const [newTask, setNewTask] = useState<EditableTask>({ name: "", location: "", description: "" });
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingTask, setEditingTask] = useState<EditableTask>({ name: "", location: "", description: "" });
 
+  const [optimistic, setOptimistic] = useState<Partial<Settings>>({});
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -62,7 +64,9 @@ export default function HostLobby({ code }: { code: string }) {
   const pin = getPin();
 
   const fetchState = useCallback(async () => {
+    const seq = ++fetchSeq.current;
     const res = await api<StateResponse>(`/api/state?code=${code}`);
+    if (seq !== fetchSeq.current) return; // a newer request already landed
     if (!res.ok) {
       if (res.error.toLowerCase().includes("token") || res.error.toLowerCase().includes("member")) {
         router.push("/");
@@ -74,16 +78,6 @@ export default function HostLobby({ code }: { code: string }) {
     setLoadError(null);
     setState(res);
   }, [code, router]);
-
-  // Keep the task draft in sync with the server, unless the host has unsaved
-  // edits. Adjusted during render (React's endorsed pattern for derived
-  // state), not inside an effect, so it doesn't cost an extra commit.
-  if (state && state.phase === "lobby" && !taskDraftDirty && state.tasks !== syncedTasks) {
-    setSyncedTasks(state.tasks);
-    setTaskDraft(
-      state.tasks.map((t) => ({ name: t.name, location: t.location, description: t.description ?? "" }))
-    );
-  }
 
   useEffect(() => {
     const token = getToken();
@@ -125,60 +119,105 @@ export default function HostLobby({ code }: { code: string }) {
     };
   }, [code, fetchState]);
 
-  function updateTaskField(index: number, field: keyof EditableTask, value: string) {
-    setTaskDraftDirty(true);
-    setTaskDraft((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
-  }
-
-  function addTaskRow() {
-    setTaskDraftDirty(true);
-    setTaskDraft((prev) => [...prev, { name: "", location: "", description: "" }]);
-  }
-
-  function removeTaskRow(index: number) {
-    setTaskDraftDirty(true);
-    setTaskDraft((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function moveTaskRow(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= taskDraft.length) return;
-    setTaskDraftDirty(true);
-    setTaskDraft((prev) => {
-      const next = prev.slice();
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  async function saveTasks() {
-    if (!pin) return;
-    setSavingTasks(true);
-    setTaskSaveError(null);
-    const cleaned = taskDraft
-      .map((t) => ({ name: t.name.trim(), location: t.location.trim(), description: t.description.trim() }))
-      .filter((t) => t.name.length > 0 && t.location.length > 0);
-    const res = await api("/api/tasks", {
-      body: { pin, tasks: cleaned },
-    });
-    setSavingTasks(false);
+  async function saveTaskList(next: EditableTask[]): Promise<boolean> {
+    if (!pin) return false;
+    setTaskBusy(true);
+    const res = await api("/api/tasks", { body: { pin, tasks: next } });
     if (!res.ok) {
-      setTaskSaveError(res.error);
+      setTaskError(res.error);
+      setTaskBusy(false);
+      return false;
+    }
+    setTaskError(null);
+    await fetchState();
+    setTaskBusy(false);
+    return true;
+  }
+
+  async function moveTask(index: number, direction: -1 | 1) {
+    if (!state || state.phase !== "lobby") return;
+    const target = index + direction;
+    if (target < 0 || target >= state.tasks.length) return;
+    const next = state.tasks.map((t) => ({ name: t.name, location: t.location, description: t.description ?? "" }));
+    [next[index], next[target]] = [next[target], next[index]];
+    await saveTaskList(next);
+  }
+
+  async function removeTask(index: number) {
+    if (!state || state.phase !== "lobby") return;
+    const next = state.tasks
+      .filter((_, i) => i !== index)
+      .map((t) => ({ name: t.name, location: t.location, description: t.description ?? "" }));
+    await saveTaskList(next);
+  }
+
+  function startEditTask(index: number) {
+    if (!state || state.phase !== "lobby") return;
+    const task = state.tasks[index];
+    setEditingIndex(index);
+    setEditingTask({ name: task.name, location: task.location, description: task.description ?? "" });
+    setTaskError(null);
+  }
+
+  function cancelEditTask() {
+    setEditingIndex(null);
+    setTaskError(null);
+  }
+
+  async function saveEditTask() {
+    if (!state || state.phase !== "lobby" || editingIndex === null) return;
+    const name = editingTask.name.trim();
+    const location = editingTask.location.trim();
+    if (name.length === 0 || location.length === 0) {
+      setTaskError("Task needs a name and a location.");
       return;
     }
-    setTaskDraftDirty(false);
-    fetchState();
+    const next = state.tasks.map((t, i) =>
+      i === editingIndex
+        ? { name, location, description: editingTask.description.trim() }
+        : { name: t.name, location: t.location, description: t.description ?? "" }
+    );
+    const success = await saveTaskList(next);
+    if (success) setEditingIndex(null);
   }
 
-  async function updateSetting(patch: Record<string, unknown>) {
+  async function addTask() {
+    if (!state || state.phase !== "lobby") return;
+    const name = newTask.name.trim();
+    const location = newTask.location.trim();
+    if (name.length === 0 || location.length === 0) {
+      setTaskError("Task needs a name and a location.");
+      return;
+    }
+    const current = state.tasks.map((t) => ({ name: t.name, location: t.location, description: t.description ?? "" }));
+    const success = await saveTaskList([...current, { name, location, description: newTask.description.trim() }]);
+    if (success) {
+      setNewTask({ name: "", location: "", description: "" });
+      setTaskError(null);
+    }
+  }
+
+  async function updateSetting(patch: Partial<Settings>) {
     if (!pin) return;
     setSettingsError(null);
+    setOptimistic((prev) => ({ ...prev, ...patch }));
+    const keys = Object.keys(patch) as (keyof Settings)[];
     const res = await api("/api/settings", { body: { pin, ...patch } });
     if (!res.ok) {
       setSettingsError(res.error);
+      setOptimistic((prev) => {
+        const next = { ...prev };
+        keys.forEach((k) => delete next[k]);
+        return next;
+      });
       return;
     }
-    fetchState();
+    await fetchState();
+    setOptimistic((prev) => {
+      const next = { ...prev };
+      keys.forEach((k) => delete next[k]);
+      return next;
+    });
   }
 
   async function startRound() {
@@ -210,6 +249,8 @@ export default function HostLobby({ code }: { code: string }) {
     );
   }
 
+  const settings: Settings | null = state.phase === "lobby" ? { ...state.settings, ...optimistic } : null;
+
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-10">
       <div className="text-center">
@@ -230,7 +271,7 @@ export default function HostLobby({ code }: { code: string }) {
         <p className="au-dim">Phase: {state.phase}</p>
       )}
 
-      {state.phase === "lobby" && (
+      {state.phase === "lobby" && settings && (
         <>
           <section className="flex flex-col gap-2">
             <h2 className="au-dim text-sm uppercase tracking-wider">
@@ -248,61 +289,116 @@ export default function HostLobby({ code }: { code: string }) {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h2 className="au-dim text-sm uppercase tracking-wider">Tasks</h2>
-            <div className="flex flex-col gap-3">
-              {taskDraft.map((task, index) => (
-                <div key={index} className="au-card flex flex-col gap-2">
-                  <div className="flex gap-2">
+            <h2 className="au-dim text-sm uppercase tracking-wider">Tasks ({state.tasks.length})</h2>
+            <div className="flex flex-col gap-2">
+              {state.tasks.map((task, index) =>
+                editingIndex !== null && editingIndex < state.tasks.length && index === editingIndex ? (
+                  <div key={task.taskId} className="au-card flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <input
+                        className="au-input"
+                        placeholder="Name"
+                        maxLength={80}
+                        value={editingTask.name}
+                        onChange={(e) => setEditingTask((prev) => ({ ...prev, name: e.target.value }))}
+                      />
+                      <input
+                        className="au-input"
+                        placeholder="Location"
+                        maxLength={80}
+                        value={editingTask.location}
+                        onChange={(e) => setEditingTask((prev) => ({ ...prev, location: e.target.value }))}
+                      />
+                    </div>
                     <input
                       className="au-input"
-                      placeholder="Name"
-                      value={task.name}
-                      onChange={(e) => updateTaskField(index, "name", e.target.value)}
+                      placeholder="Description (optional)"
+                      maxLength={280}
+                      value={editingTask.description}
+                      onChange={(e) => setEditingTask((prev) => ({ ...prev, description: e.target.value }))}
                     />
-                    <input
-                      className="au-input"
-                      placeholder="Location"
-                      value={task.location}
-                      onChange={(e) => updateTaskField(index, "location", e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                      <button type="button" className="au-button-small" onClick={saveEditTask} disabled={taskBusy}>
+                        Save
+                      </button>
+                      <button type="button" className="au-button-small" onClick={cancelEditTask} disabled={taskBusy}>
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    className="au-input"
-                    placeholder="Description (optional)"
-                    value={task.description}
-                    onChange={(e) => updateTaskField(index, "description", e.target.value)}
-                  />
-                  <div className="flex gap-2">
+                ) : (
+                  <div key={task.taskId} className="au-card py-2 flex items-center gap-2">
+                    <span className="truncate min-w-0 flex-1">
+                      {task.name} · {task.location}
+                    </span>
                     <button
                       type="button"
                       className="au-button-small"
-                      onClick={() => moveTaskRow(index, -1)}
-                      disabled={index === 0}
+                      onClick={() => moveTask(index, -1)}
+                      disabled={taskBusy || index === 0}
                     >
                       Up
                     </button>
                     <button
                       type="button"
                       className="au-button-small"
-                      onClick={() => moveTaskRow(index, 1)}
-                      disabled={index === taskDraft.length - 1}
+                      onClick={() => moveTask(index, 1)}
+                      disabled={taskBusy || index === state.tasks.length - 1}
                     >
                       Down
                     </button>
-                    <button type="button" className="au-button-small" onClick={() => removeTaskRow(index)}>
-                      Delete
+                    <button
+                      type="button"
+                      className="au-button-small"
+                      onClick={() => startEditTask(index)}
+                      disabled={taskBusy}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="au-button-small"
+                      onClick={() => removeTask(index)}
+                      disabled={taskBusy}
+                    >
+                      X
                     </button>
                   </div>
-                </div>
-              ))}
-              <button type="button" className="au-button-small" onClick={addTaskRow}>
-                + Add task
+                )
+              )}
+              {state.tasks.length === 0 && <p className="au-dim">No tasks yet.</p>}
+            </div>
+
+            <div className="au-card flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input
+                  className="au-input"
+                  placeholder="Name"
+                  maxLength={80}
+                  value={newTask.name}
+                  onChange={(e) => setNewTask((prev) => ({ ...prev, name: e.target.value }))}
+                />
+                <input
+                  className="au-input"
+                  placeholder="Location"
+                  maxLength={80}
+                  value={newTask.location}
+                  onChange={(e) => setNewTask((prev) => ({ ...prev, location: e.target.value }))}
+                />
+              </div>
+              <input
+                className="au-input"
+                placeholder="Description (optional)"
+                maxLength={280}
+                value={newTask.description}
+                onChange={(e) => setNewTask((prev) => ({ ...prev, description: e.target.value }))}
+              />
+              <button type="button" className="au-button" onClick={addTask} disabled={taskBusy}>
+                Add task
               </button>
             </div>
-            {taskSaveError && <p className="au-error">{taskSaveError}</p>}
-            <button type="button" className="au-button" onClick={saveTasks} disabled={savingTasks}>
-              {savingTasks ? "Saving..." : "Save Tasks"}
-            </button>
+
+            {taskError && <p className="au-error">{taskError}</p>}
           </section>
 
           <section className="flex flex-col gap-3">
@@ -320,17 +416,15 @@ export default function HostLobby({ code }: { code: string }) {
                 <button
                   type="button"
                   className="au-button-small"
-                  onClick={() =>
-                    updateSetting({ imposterCount: Math.max(1, state.settings.imposterCount - 1) })
-                  }
+                  onClick={() => updateSetting({ imposterCount: Math.max(1, settings.imposterCount - 1) })}
                 >
                   -
                 </button>
-                <span className="text-xl">{state.settings.imposterCount}</span>
+                <span className="text-xl">{settings.imposterCount}</span>
                 <button
                   type="button"
                   className="au-button-small"
-                  onClick={() => updateSetting({ imposterCount: state.settings.imposterCount + 1 })}
+                  onClick={() => updateSetting({ imposterCount: settings.imposterCount + 1 })}
                 >
                   +
                 </button>
@@ -344,7 +438,7 @@ export default function HostLobby({ code }: { code: string }) {
                 type="number"
                 min={1}
                 placeholder="all"
-                value={state.settings.tasksPerPlayer ?? ""}
+                value={settings.tasksPerPlayer ?? ""}
                 onChange={(e) => {
                   const raw = e.target.value;
                   updateSetting({ tasksPerPlayer: raw === "" ? null : Math.max(1, Number(raw)) });
@@ -356,7 +450,7 @@ export default function HostLobby({ code }: { code: string }) {
               <span>Anonymous voting</span>
               <input
                 type="checkbox"
-                checked={state.settings.anonymousVoting}
+                checked={settings.anonymousVoting}
                 onChange={(e) => updateSetting({ anonymousVoting: e.target.checked })}
               />
             </label>
@@ -365,7 +459,7 @@ export default function HostLobby({ code }: { code: string }) {
               <span>Imposter task completions count toward the bar</span>
               <input
                 type="checkbox"
-                checked={state.settings.imposterTasksCount}
+                checked={settings.imposterTasksCount}
                 onChange={(e) => updateSetting({ imposterTasksCount: e.target.checked })}
               />
             </label>
@@ -374,7 +468,7 @@ export default function HostLobby({ code }: { code: string }) {
               <span>Ghost tasks (dead crewmates keep doing tasks)</span>
               <input
                 type="checkbox"
-                checked={state.settings.ghostTasks}
+                checked={settings.ghostTasks}
                 onChange={(e) => updateSetting({ ghostTasks: e.target.checked })}
               />
             </label>
