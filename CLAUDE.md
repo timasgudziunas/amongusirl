@@ -32,10 +32,11 @@ Violating any of these makes the app pointless:
    only via server route handlers using `SUPABASE_SERVICE_ROLE_KEY`.
 2. **`SUPABASE_SERVICE_ROLE_KEY` is never prefixed `NEXT_PUBLIC_`** and is never
    imported into any file under a `"use client"` boundary.
-3. **Realtime is enabled only on `rooms`, `players`, and `task_locks`.** Never on
-   `player_roles`, `player_state`, `votes`, or `task_claims`.
+3. **Realtime is enabled only on `rooms`, `players`, `tasks`, and `task_occupancy`**
+   (`task_occupancy` is public counts only). Never on `player_roles`, `player_secrets`,
+   `votes`, `player_tasks`, or `task_claims` (secret: who actually holds a claim).
 4. **The client never calls `supabase.from(...)` for anything except `rooms`,
-   `players`, and `task_locks`.** Everything else goes through `/api/*`.
+   `players`, `tasks`, and `task_occupancy`.** Everything else goes through `/api/*`.
 5. **Deaths are not published during the `playing` or `gathering` phases.** Alive/dead is
    only ever returned by `/api/state` when `phase` is `meeting`, `voting`, `results`, or
    `ended`. **The one deliberate exception is `GET /api/bodies`**, which a living player
