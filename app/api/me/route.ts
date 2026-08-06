@@ -22,9 +22,11 @@ export async function GET(req: Request) {
   if (room.round === 0) {
     return json({
       ok: true,
+      name: player.name,
       role: null,
       isAlive: secrets.is_alive,
       isHere: secrets.is_here,
+      hasCalledMeeting: player.has_called_meeting,
       myTasks: [],
     });
   }
@@ -39,9 +41,11 @@ export async function GET(req: Request) {
 
   const payload: Record<string, unknown> = {
     ok: true,
+    name: player.name,
     role,
     isAlive: secrets.is_alive,
     isHere: secrets.is_here,
+    hasCalledMeeting: player.has_called_meeting,
   };
 
   if (role === "imposter") {

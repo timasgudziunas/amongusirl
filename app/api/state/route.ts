@@ -89,19 +89,26 @@ export async function GET(req: Request) {
   }
 
   if (room.phase === "playing") {
-    const { data: players } = await admin
-      .from("players")
-      .select("id, name")
-      .eq("room_code", code)
-      .order("joined_at", { ascending: true });
+    const [{ data: players }, { data: occupancyRows }] = await Promise.all([
+      admin
+        .from("players")
+        .select("id, name")
+        .eq("room_code", code)
+        .order("joined_at", { ascending: true }),
+      admin.from("task_occupancy").select("task_id, occupied").eq("room_code", code),
+    ]);
 
     const roster = (players ?? []).map((p) => ({ playerId: p.id, name: p.name }));
+    const occupancy = (occupancyRows ?? []).map((o) => ({ taskId: o.task_id, occupied: o.occupied }));
 
     const payload: Record<string, unknown> = {
       ok: true,
       phase: room.phase,
       round: room.round,
       roster,
+      occupancy,
+      taskCapacity: room.task_capacity,
+      hasCalledMeeting: player.has_called_meeting,
     };
     if (room.show_task_bar) {
       payload.tasksDone = room.tasks_done;
@@ -110,6 +117,133 @@ export async function GET(req: Request) {
     return json(payload);
   }
 
-  // Later phases (gathering/meeting/voting/results/ended) extend this.
+  if (room.phase === "gathering") {
+    // Still no alive/dead roster — that arrives when the discussion starts.
+    return json({
+      ok: true,
+      phase: room.phase,
+      hereCount: room.here_count,
+      expectedHere: room.expected_here,
+      phaseEndsAt: room.phase_ends_at,
+      meetingReason: room.meeting_reason,
+      reportedBodyName: room.reported_body_name,
+    });
+  }
+
+  if (room.phase === "meeting") {
+    // The one phase where death is shown at all — full roster, alive and dead.
+    const { data: players } = await admin
+      .from("players")
+      .select("id, name")
+      .eq("room_code", code)
+      .order("joined_at", { ascending: true });
+    const ids = (players ?? []).map((p) => p.id as string);
+    const idFilter = ids.length > 0 ? ids : [""];
+    const { data: secretRows } = await admin
+      .from("player_secrets")
+      .select("player_id, is_alive")
+      .in("player_id", idFilter);
+    const aliveMap = new Map((secretRows ?? []).map((s) => [s.player_id as string, s.is_alive as boolean]));
+
+    const roster = (players ?? []).map((p) => ({
+      playerId: p.id,
+      name: p.name,
+      isAlive: aliveMap.get(p.id as string) ?? true,
+    }));
+
+    return json({
+      ok: true,
+      phase: room.phase,
+      roster,
+      phaseEndsAt: room.phase_ends_at,
+      meetingReason: room.meeting_reason,
+      reportedBodyName: room.reported_body_name,
+    });
+  }
+
+  if (room.phase === "voting") {
+    const { data: players } = await admin
+      .from("players")
+      .select("id, name")
+      .eq("room_code", code)
+      .order("joined_at", { ascending: true });
+    const ids = (players ?? []).map((p) => p.id as string);
+    const idFilter = ids.length > 0 ? ids : [""];
+    const { data: secretRows } = await admin
+      .from("player_secrets")
+      .select("player_id, is_alive")
+      .in("player_id", idFilter);
+    const aliveIds = new Set((secretRows ?? []).filter((s) => s.is_alive).map((s) => s.player_id as string));
+    const livingRoster = (players ?? [])
+      .filter((p) => aliveIds.has(p.id as string))
+      .map((p) => ({ playerId: p.id, name: p.name }));
+
+    const { data: myVote } = await admin
+      .from("votes")
+      .select("voter_id")
+      .eq("room_code", code)
+      .eq("round", room.round)
+      .eq("meeting_no", room.meeting_no)
+      .eq("voter_id", player.id)
+      .maybeSingle();
+
+    return json({
+      ok: true,
+      phase: room.phase,
+      roster: livingRoster,
+      votesCast: room.votes_cast,
+      livingCount: livingRoster.length,
+      phaseEndsAt: room.phase_ends_at,
+      myVoteCast: myVote !== null,
+    });
+  }
+
+  if (room.phase === "results") {
+    // Defense in depth: tallyVotes already omits ballots when anonymous, but strip
+    // again here in case last_result was ever written some other way.
+    const lastResult = room.last_result ? { ...(room.last_result as Record<string, unknown>) } : null;
+    if (lastResult && room.anonymous_voting) {
+      delete lastResult.ballots;
+    }
+    return json({
+      ok: true,
+      phase: room.phase,
+      lastResult,
+      phaseEndsAt: room.phase_ends_at,
+      winnerPending: room.winner,
+    });
+  }
+
+  if (room.phase === "ended") {
+    const { data: players } = await admin
+      .from("players")
+      .select("id, name")
+      .eq("room_code", code)
+      .order("joined_at", { ascending: true });
+    const ids = (players ?? []).map((p) => p.id as string);
+    const idFilter = ids.length > 0 ? ids : [""];
+
+    const [{ data: roleRows }, { data: secretRows }] = await Promise.all([
+      admin.from("player_roles").select("player_id, role").eq("round", room.round).in("player_id", idFilter),
+      admin.from("player_secrets").select("player_id, is_alive").in("player_id", idFilter),
+    ]);
+    const roleMap = new Map((roleRows ?? []).map((r) => [r.player_id as string, r.role as string]));
+    const aliveMap = new Map((secretRows ?? []).map((s) => [s.player_id as string, s.is_alive as boolean]));
+
+    const roster = (players ?? []).map((p) => ({
+      playerId: p.id,
+      name: p.name,
+      role: roleMap.get(p.id as string) ?? null,
+      isAlive: aliveMap.get(p.id as string) ?? true,
+    }));
+
+    return json({
+      ok: true,
+      phase: room.phase,
+      winner: room.winner,
+      roster,
+    });
+  }
+
   return json({ ok: true, phase: room.phase });
 }
