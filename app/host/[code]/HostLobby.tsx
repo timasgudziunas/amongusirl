@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, getCode, getPin, getToken } from "@/lib/client";
+import { api, getCode, getPin, getToken, setPin } from "@/lib/client";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 type RosterEntry = { playerId: string; name: string; isHost: boolean; hasCalledMeeting: boolean };
@@ -61,7 +61,11 @@ export default function HostLobby({ code }: { code: string }) {
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
-  const pin = getPin();
+  const [pin, setPinValue] = useState<string | null>(() => getPin());
+  const [claimPin, setClaimPin] = useState("");
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [pinRejected, setPinRejected] = useState(false);
 
   const fetchState = useCallback(async () => {
     const seq = ++fetchSeq.current;
@@ -125,6 +129,7 @@ export default function HostLobby({ code }: { code: string }) {
     const res = await api("/api/tasks", { body: { pin, tasks: next } });
     if (!res.ok) {
       setTaskError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
       setTaskBusy(false);
       return false;
     }
@@ -205,6 +210,7 @@ export default function HostLobby({ code }: { code: string }) {
     const res = await api("/api/settings", { body: { pin, ...patch } });
     if (!res.ok) {
       setSettingsError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
       setOptimistic((prev) => {
         const next = { ...prev };
         keys.forEach((k) => delete next[k]);
@@ -228,14 +234,37 @@ export default function HostLobby({ code }: { code: string }) {
     setStarting(false);
     if (!res.ok) {
       setStartError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
       return;
     }
     fetchState();
   }
 
+  async function claimHost() {
+    const sanitized = claimPin.replace(/\D/g, "").slice(0, 4);
+    if (sanitized.length !== 4) {
+      setClaimError("Enter the 4 digit host PIN.");
+      return;
+    }
+    setClaiming(true);
+    setClaimError(null);
+    const res = await api("/api/claim-host", { body: { pin: sanitized } });
+    setClaiming(false);
+    if (!res.ok) {
+      setClaimError(res.error);
+      return;
+    }
+    setPin(sanitized);
+    setPinValue(sanitized);
+    setPinRejected(false);
+    setClaimError(null);
+    setClaimPin("");
+    await fetchState();
+  }
+
   if (loadError) {
     return (
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-4 px-6 py-16">
+      <main className="au-bright mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-4 px-6 py-16">
         <p className="au-error">{loadError}</p>
       </main>
     );
@@ -243,16 +272,17 @@ export default function HostLobby({ code }: { code: string }) {
 
   if (!state) {
     return (
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-4 px-6 py-16">
+      <main className="au-bright mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-4 px-6 py-16">
         <p className="au-dim">Loading...</p>
       </main>
     );
   }
 
   const settings: Settings | null = state.phase === "lobby" ? { ...state.settings, ...optimistic } : null;
+  const isHostDevice = state.phase === "lobby" && state.isHost && !pinRejected;
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-10">
+    <main className="au-bright mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-10">
       <div className="text-center">
         <p className="au-dim text-sm uppercase tracking-wider">Room code</p>
         <h1 className="text-6xl tracking-widest">{code}</h1>
@@ -290,6 +320,18 @@ export default function HostLobby({ code }: { code: string }) {
 
           <section className="flex flex-col gap-3">
             <h2 className="au-dim text-sm uppercase tracking-wider">Tasks ({state.tasks.length})</h2>
+            {!isHostDevice && (
+              <div className="flex flex-col gap-2">
+                {state.tasks.map((task) => (
+                  <div key={task.taskId} className="au-card py-2">
+                    {task.name} · {task.location}
+                  </div>
+                ))}
+                {state.tasks.length === 0 && <p className="au-dim">No tasks yet.</p>}
+              </div>
+            )}
+            {isHostDevice && (
+            <>
             <div className="flex flex-col gap-2">
               {state.tasks.map((task, index) =>
                 editingIndex !== null && editingIndex < state.tasks.length && index === editingIndex ? (
@@ -399,8 +441,35 @@ export default function HostLobby({ code }: { code: string }) {
             </div>
 
             {taskError && <p className="au-error">{taskError}</p>}
+            </>
+            )}
           </section>
 
+          {!isHostDevice && (
+            <section className="flex flex-col gap-3">
+              <h2 className="au-dim text-sm uppercase tracking-wider">Host controls</h2>
+              <p className="au-dim">
+                {pinRejected
+                  ? "The saved host PIN on this device is wrong. Enter the host PIN to continue."
+                  : "This device is not the host. Enter the host PIN to claim host controls."}
+              </p>
+              <input
+                className="au-input"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="4 digit host PIN"
+                value={claimPin}
+                onChange={(e) => setClaimPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              />
+              {claimError && <p className="au-error">{claimError}</p>}
+              <button type="button" className="au-button" onClick={claimHost} disabled={claiming}>
+                {claiming ? "Claiming..." : "Claim host"}
+              </button>
+            </section>
+          )}
+
+          {isHostDevice && (
+          <>
           <section className="flex flex-col gap-3">
             <h2 className="au-dim text-sm uppercase tracking-wider">Settings</h2>
 
@@ -450,6 +519,7 @@ export default function HostLobby({ code }: { code: string }) {
               <span>Anonymous voting</span>
               <input
                 type="checkbox"
+                className="h-6 w-6"
                 checked={settings.anonymousVoting}
                 onChange={(e) => updateSetting({ anonymousVoting: e.target.checked })}
               />
@@ -459,6 +529,7 @@ export default function HostLobby({ code }: { code: string }) {
               <span>Imposter task completions count toward the bar</span>
               <input
                 type="checkbox"
+                className="h-6 w-6"
                 checked={settings.imposterTasksCount}
                 onChange={(e) => updateSetting({ imposterTasksCount: e.target.checked })}
               />
@@ -468,6 +539,7 @@ export default function HostLobby({ code }: { code: string }) {
               <span>Ghost tasks (dead crewmates keep doing tasks)</span>
               <input
                 type="checkbox"
+                className="h-6 w-6"
                 checked={settings.ghostTasks}
                 onChange={(e) => updateSetting({ ghostTasks: e.target.checked })}
               />
@@ -496,6 +568,8 @@ export default function HostLobby({ code }: { code: string }) {
               {starting ? "Starting..." : "Start Round"}
             </button>
           </section>
+          </>
+          )}
         </>
       )}
     </main>

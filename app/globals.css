@@ -94,3 +94,15 @@ textarea {
   border: 1px solid var(--au-border);
   padding: 1rem;
 }
+
+/* Host configuration page is deliberately bright: it holds no secrets, and players may see it over the host's shoulder. */
+.au-bright {
+  --au-text: #e6ddd3;
+  --au-text-dim: #a89a8d;
+  --au-border: #5a4c41;
+  color: var(--au-text); /* plain text inherits body's dim red otherwise */
+  accent-color: #b23a3a;
+}
+.au-bright .au-card {
+  background: #140d09;
+}
