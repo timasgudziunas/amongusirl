@@ -6,6 +6,7 @@
   --au-text-dim: #6b2323;
   --au-border: #3a1414;
   --au-error: #ff5c5c;
+  --au-pulse-red: #8a0000;
 }
 
 @theme inline {
@@ -86,6 +87,16 @@ textarea {
   font-size: 0.95rem;
 }
 
+/* A silent 403 on settings has already burned a real game night — host-facing
+   errors must be impossible to miss. */
+.au-error-banner {
+  border: 2px solid var(--au-error);
+  color: var(--au-error);
+  padding: 1rem 1.1rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
 .au-dim {
   color: var(--au-text-dim);
 }
@@ -93,6 +104,41 @@ textarea {
 .au-card {
   border: 1px solid var(--au-border);
   padding: 1rem;
+}
+
+/* The one deliberate animation: the gathering red pulse. Roughly 1Hz, full screen.
+   It doubles as the meeting-called signal in a dark house. */
+@keyframes au-pulse-flash {
+  0%,
+  100% {
+    background: var(--au-bg);
+  }
+  50% {
+    background: var(--au-pulse-red);
+  }
+}
+
+.au-pulse {
+  animation: au-pulse-flash 1s ease-in-out infinite;
+  background: var(--au-bg);
+  color: #fff;
+}
+.au-pulse .au-button {
+  border-color: #fff;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .au-pulse {
+    animation: none;
+    background: var(--au-pulse-red);
+  }
+}
+
+/* The active-task screen: full white, full brightness — doubles as the flashlight signal. */
+.au-task-white {
+  background: #ffffff;
+  color: #000000;
 }
 
 /* Host configuration page is deliberately bright: it holds no secrets, and players may see it over the host's shoulder. */

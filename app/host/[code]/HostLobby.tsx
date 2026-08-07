@@ -67,6 +67,12 @@ export default function HostLobby({ code }: { code: string }) {
   const [claimError, setClaimError] = useState<string | null>(null);
   const [pinRejected, setPinRejected] = useState(false);
 
+  const [forceBusy, setForceBusy] = useState(false);
+  const [forceError, setForceError] = useState<string | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   const fetchState = useCallback(async () => {
     const seq = ++fetchSeq.current;
     const res = await api<StateResponse>(`/api/state?code=${code}`);
@@ -240,6 +246,49 @@ export default function HostLobby({ code }: { code: string }) {
     fetchState();
   }
 
+  // Reset transient two-step / error state whenever the phase changes.
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setResetConfirm(false);
+      setResetError(null);
+      setForceError(null);
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [state?.phase]);
+
+  async function forceMeeting() {
+    if (!pin) return;
+    setForceBusy(true);
+    setForceError(null);
+    const res = await api("/api/force-meeting", { body: { pin } });
+    setForceBusy(false);
+    if (!res.ok) {
+      setForceError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
+      return;
+    }
+    fetchState();
+  }
+
+  async function resetToLobby() {
+    if (!pin) return;
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      return;
+    }
+    setResetConfirm(false);
+    setResetBusy(true);
+    setResetError(null);
+    const res = await api("/api/reset", { body: { pin } });
+    setResetBusy(false);
+    if (!res.ok) {
+      setResetError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
+      return;
+    }
+    fetchState();
+  }
+
   async function claimHost() {
     const sanitized = claimPin.replace(/\D/g, "").slice(0, 4);
     if (sanitized.length !== 4) {
@@ -298,7 +347,27 @@ export default function HostLobby({ code }: { code: string }) {
       )}
 
       {state.phase !== "lobby" && state.phase !== "playing" && (
-        <p className="au-dim">Phase: {state.phase}</p>
+        <p className="au-dim text-center">Phase: {state.phase}</p>
+      )}
+
+      {state.phase !== "lobby" && pin && !pinRejected && (
+        <section className="flex flex-col gap-3">
+          <h2 className="au-dim text-sm uppercase tracking-wider">Host controls</h2>
+
+          {state.phase === "gathering" && (
+            <>
+              <button type="button" className="au-button" disabled={forceBusy} onClick={forceMeeting}>
+                {forceBusy ? "Starting..." : "Force start discussion"}
+              </button>
+              {forceError && <p className="au-error-banner">{forceError}</p>}
+            </>
+          )}
+
+          <button type="button" className="au-button" disabled={resetBusy} onClick={resetToLobby}>
+            {resetBusy ? "Resetting..." : resetConfirm ? "Tap again to confirm reset" : "Reset to lobby"}
+          </button>
+          {resetError && <p className="au-error-banner">{resetError}</p>}
+        </section>
       )}
 
       {state.phase === "lobby" && settings && (
@@ -440,7 +509,7 @@ export default function HostLobby({ code }: { code: string }) {
               </button>
             </div>
 
-            {taskError && <p className="au-error">{taskError}</p>}
+            {taskError && <p className="au-error-banner">{taskError}</p>}
             </>
             )}
           </section>
@@ -545,7 +614,7 @@ export default function HostLobby({ code }: { code: string }) {
               />
             </label>
 
-            {settingsError && <p className="au-error">{settingsError}</p>}
+            {settingsError && <p className="au-error-banner">{settingsError}</p>}
           </section>
 
           <section className="flex flex-col gap-2">
@@ -558,7 +627,7 @@ export default function HostLobby({ code }: { code: string }) {
                 ))}
               </ul>
             )}
-            {startError && <p className="au-error">{startError}</p>}
+            {startError && <p className="au-error-banner">{startError}</p>}
             <button
               type="button"
               className="au-button"
