@@ -49,15 +49,14 @@ export async function POST(req: Request) {
 
   const [{ data: rosterRows, error: rosterError }, { data: taskRows, error: taskError }] =
     await Promise.all([
-      admin.from("players").select("id, name").eq("room_code", code),
+      admin.from("players").select("id").eq("room_code", code),
       admin.from("tasks").select("id").eq("room_code", code).order("order_index"),
     ]);
   if (rosterError || taskError) {
     return errorJson("Failed to load room state", 500);
   }
 
-  const roster = (rosterRows ?? []) as { id: string; name: string }[];
-  const playerIds = roster.map((p) => p.id);
+  const playerIds = (rosterRows ?? []).map((p) => p.id as string);
   const taskIds = (taskRows ?? []).map((t) => t.id as string);
 
   const validation = computeStartValidation(
@@ -83,14 +82,8 @@ export async function POST(req: Request) {
   }
 
   // Roles.
-  const seedNames = new Set(["timas", "sarayu"]);
-  const seeded = roster.filter((p) => seedNames.has(p.name.trim().toLowerCase())).map((p) => p.id);
-  const seededSet = new Set(seeded.slice(0, room.imposter_count));
-  const remainder = shuffle(playerIds.filter((id) => !seededSet.has(id)));
-  const imposterIds = new Set([
-    ...seededSet,
-    ...remainder.slice(0, Math.max(0, room.imposter_count - seededSet.size)),
-  ]);
+  const shuffledPlayers = shuffle(playerIds);
+  const imposterIds = new Set(shuffledPlayers.slice(0, room.imposter_count));
   const roleRows = playerIds.map((id) => ({
     player_id: id,
     round: newRound,
