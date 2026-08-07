@@ -1,6 +1,15 @@
 import { errorJson, json, resolvePlayer } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { advanceFromVoting, checkWin, clearExpiredClaims, endGame, recomputeTaskCounters } from "@/lib/game";
+import {
+  advanceFromVoting,
+  checkWin,
+  clearExpiredClaims,
+  ENDED_SECS,
+  endGame,
+  LOBBY_RESET_FIELDS,
+  recomputeTaskCounters,
+  resetRoomSideEffects,
+} from "@/lib/game";
 
 export const runtime = "nodejs";
 
@@ -72,7 +81,10 @@ export async function POST(req: Request) {
     if (room.winner) {
       const { data: claimed } = await admin
         .from("rooms")
-        .update({ phase: "ended", phase_ends_at: null })
+        .update({
+          phase: "ended",
+          phase_ends_at: new Date(nowMs + ENDED_SECS * 1000).toISOString(),
+        })
         .eq("code", code)
         .eq("phase", "results")
         .lt("phase_ends_at", nowIso)
@@ -95,6 +107,23 @@ export async function POST(req: Request) {
         .lt("phase_ends_at", nowIso)
         .select("code");
       if (claimed && claimed.length > 0) phase = "playing";
+    }
+  } else if (phase === "ended" && timerExpired) {
+    // Rooms sitting in "ended" with phase_ends_at null (pre-auto-reset rooms, or an
+    // edge case) never get here — timerExpired is false without a deadline, same as
+    // every other phase. Claim the transition first; only the claimer runs the
+    // roster/settings-preserving side effects (see resetRoomToLobby for the
+    // host-triggered, unconditional counterpart).
+    const { data: claimed } = await admin
+      .from("rooms")
+      .update(LOBBY_RESET_FIELDS)
+      .eq("code", code)
+      .eq("phase", "ended")
+      .lt("phase_ends_at", nowIso)
+      .select("code");
+    if (claimed && claimed.length > 0) {
+      await resetRoomSideEffects(admin, code);
+      phase = "lobby";
     }
   }
 

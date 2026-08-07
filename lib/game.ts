@@ -7,6 +7,9 @@ import type { supabaseAdmin } from "@/lib/supabase/server";
 
 type Admin = ReturnType<typeof supabaseAdmin>;
 
+/** Seconds the "ended" (winner) screen stays up before /tick auto-resets to lobby. */
+export const ENDED_SECS = 10;
+
 // Loose shape of a `rooms` row — only the fields these helpers actually read/write.
 export type RoomRow = {
   code: string;
@@ -190,13 +193,73 @@ export async function checkWin(admin: Admin, room: RoomRow): Promise<"crew" | "i
   return null;
 }
 
-/** Conditional transition to ended — a no-op if the room is already ended. */
+/** Conditional transition to ended — a no-op if the room is already ended. The ended
+ * screen holds for ENDED_SECS, after which /tick auto-resets the room to lobby. */
 export async function endGame(admin: Admin, roomCode: string, winner: "crew" | "imposters"): Promise<void> {
   await admin
     .from("rooms")
-    .update({ phase: "ended", winner, phase_ends_at: null })
+    .update({
+      phase: "ended",
+      winner,
+      phase_ends_at: new Date(Date.now() + ENDED_SECS * 1000).toISOString(),
+    })
     .eq("code", roomCode)
     .neq("phase", "ended");
+}
+
+/** rooms columns reset when a game returns to lobby — shared by /api/reset (host-triggered,
+ * unconditional) and /tick's ended -> lobby auto-transition (conditional claim). Round is
+ * left alone — the next start-round increments it. */
+export const LOBBY_RESET_FIELDS = {
+  phase: "lobby",
+  phase_ends_at: null,
+  tasks_done: 0,
+  tasks_total: 0,
+  here_count: 0,
+  expected_here: 0,
+  votes_cast: 0,
+  last_result: null,
+  winner: null,
+  meeting_reason: null,
+  reported_body_name: null,
+  meeting_no: 0,
+} as const;
+
+/**
+ * Non-rooms side effects of a reset to lobby: clears claims, zeroes occupancy, and resets
+ * player_secrets. Reset means a NEW GAME, so has_called_meeting clears here too — the
+ * emergency meeting button is once per game. Contrast with start-round, which deliberately
+ * does NOT reset it between rounds of the same game.
+ */
+export async function resetRoomSideEffects(admin: Admin, roomCode: string): Promise<void> {
+  await admin.from("task_claims").delete().eq("room_code", roomCode);
+  await admin.from("task_occupancy").update({ occupied: 0 }).eq("room_code", roomCode);
+
+  const { data: roster } = await admin.from("players").select("id").eq("room_code", roomCode);
+  const rosterIds = (roster ?? []).map((p) => p.id as string);
+
+  if (rosterIds.length > 0) {
+    await admin
+      .from("player_secrets")
+      .update({ is_alive: true, is_here: false, reported: false })
+      .in("player_id", rosterIds);
+
+    await admin.from("players").update({ has_called_meeting: false }).in("id", rosterIds);
+  }
+}
+
+/**
+ * Unconditional reset to lobby, preserving roster/task list/settings — used by /api/reset
+ * (host-triggered). Returns the rooms-update error, if any, so the caller can 500.
+ */
+export async function resetRoomToLobby(
+  admin: Admin,
+  roomCode: string
+): Promise<{ error: { message: string } | null }> {
+  const { error } = await admin.from("rooms").update(LOBBY_RESET_FIELDS).eq("code", roomCode);
+  if (error) return { error };
+  await resetRoomSideEffects(admin, roomCode);
+  return { error: null };
 }
 
 type TallyResult = VoteResult & { ejectedId: string | null };

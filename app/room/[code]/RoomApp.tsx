@@ -508,8 +508,6 @@ export default function RoomApp({ code }: { code: string }) {
 
   if (state.phase === "playing") {
     const dead = me?.isAlive === false;
-    const occupancyMap = new Map(state.occupancy.map((o) => [o.taskId, o.occupied]));
-    const capacity = state.taskCapacity;
 
     return (
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 px-6 py-10">
@@ -551,17 +549,20 @@ export default function RoomApp({ code }: { code: string }) {
         )}
 
         {state.tasksTotal !== undefined && (
-          <p className="au-dim text-center">
-            Tasks: {state.tasksDone}/{state.tasksTotal}
-          </p>
+          <div className="au-task-bar">
+            <div
+              className="au-task-bar-fill"
+              style={{
+                width: `${state.tasksTotal ? ((state.tasksDone ?? 0) / state.tasksTotal) * 100 : 0}%`,
+              }}
+            />
+          </div>
         )}
 
         <section className="flex flex-col gap-3">
           <h2 className="au-dim text-sm uppercase tracking-wider">Your tasks</h2>
           <div className="flex flex-col gap-2">
             {(me?.myTasks ?? []).map((task) => {
-              const occupied = occupancyMap.get(task.taskId) ?? 0;
-              const full = occupied >= capacity;
               return (
                 <div
                   key={task.taskId}
@@ -571,12 +572,6 @@ export default function RoomApp({ code }: { code: string }) {
                     <p className="text-lg">{task.name}</p>
                     <p className="au-dim text-sm">{task.location}</p>
                     {task.description && <p className="au-dim text-sm">{task.description}</p>}
-                    {!task.done && (
-                      <p className="au-dim text-sm">
-                        {occupied}/{capacity}
-                        {full ? " · full" : ""}
-                      </p>
-                    )}
                   </div>
                   {task.done ? (
                     <span className="text-2xl" aria-label="done">
@@ -588,7 +583,7 @@ export default function RoomApp({ code }: { code: string }) {
                     <button
                       type="button"
                       className="au-button-small"
-                      disabled={busyTaskId !== null || full || activeClaim !== null || doorStartedAt !== null}
+                      disabled={busyTaskId !== null || activeClaim !== null || doorStartedAt !== null}
                       onClick={() => claimTask(task.taskId)}
                     >
                       {busyTaskId === task.taskId ? "..." : "Claim"}
@@ -838,7 +833,7 @@ export default function RoomApp({ code }: { code: string }) {
             </li>
           ))}
         </ul>
-        <p className="au-dim text-center text-sm">Host can reset from the host screen.</p>
+        <p className="au-dim text-center text-sm">Back to the lobby in a few seconds...</p>
       </main>
     );
   }

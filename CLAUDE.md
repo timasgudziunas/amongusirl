@@ -86,8 +86,11 @@ twelve friends, not a bank. Do not build more than this.
 The house is dark and everyone is holding a phone. Screen glow is an information leak.
 
 - Default palette is near-black background with dim red text. Low contrast is correct here.
-- During the `playing` phase, never show *who* is occupying a task station — only how
-  many of the capacity are filled. Never show per-player task counts. Aggregate bar only.
+- During the `playing` phase, never show *who* is occupying a task station. As of
+  2026-08-07 the owner tightened this further: occupancy is not rendered at all (no
+  counts, no "full") — a station filling up is itself a location leak. The server still
+  publishes counts and enforces capacity; a claim on a busy station just 409s. Never
+  show per-player task counts. Aggregate bar only, drawn as a bar without numbers.
 - The active-task screen is the one exception: pure white, full brightness, for exactly
   15 seconds, then back to black. It doubles as the in-game flashlight signal.
 - Big tap targets. People are using this one-handed, in the dark, walking.

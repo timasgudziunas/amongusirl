@@ -31,7 +31,8 @@ for anything unbuilt. See the timing note at the bottom before you start.
 ```
 lobby -> playing -> gathering -> meeting -> voting -> results -> playing
                                                                    |
-                                                                 ended
+                                                                 ended -> lobby (auto, 10s;
+                                                                 roster/tasks/settings kept)
 ```
 
 `gathering` is new and sits between a meeting being called and the discussion starting.

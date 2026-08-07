@@ -106,6 +106,18 @@ textarea {
   padding: 1rem;
 }
 
+/* Visual task-progress bar shown during "playing" — no numbers, aggregate only.
+   See CLAUDE.md UI constraints: instant state changes, no transition on the fill. */
+.au-task-bar {
+  border: 1px solid var(--au-border);
+  height: 0.75rem;
+  width: 100%;
+}
+.au-task-bar-fill {
+  background: var(--au-text-dim);
+  height: 100%;
+}
+
 /* The one deliberate animation: the gathering red pulse. Roughly 1Hz, full screen.
    It doubles as the meeting-called signal in a dark house. */
 @keyframes au-pulse-flash {
