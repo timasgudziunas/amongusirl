@@ -1,6 +1,20 @@
 # HANDOFF.md
 
-Current state as of 2026-08-07 ~00:20 UTC (Phases 2-5 complete, pushed, Vercel deploying).
+Current state as of 2026-08-07 ~01:10 UTC (Phases 2-5 complete plus two revision waves,
+all deployed green to https://amongusirl-phi.vercel.app).
+
+## Revision waves after the phase build (owner-requested, all live)
+
+- `c2a4337`: role hidden behind tap-to-reveal card; emergency-meeting two-step confirm;
+  Door button (client-only 5s white screen, indistinguishable from a task); host
+  Finish-meeting button + `/api/finish-meeting`; meeting roster alive-first with dead
+  at 40% opacity; voting_secs default 30 -> 15 (migration applied).
+- `39034d5`: task bar is a numberless progress bar; occupancy display fully removed
+  from the task list (server still enforces capacity; CLAUDE.md UI constraint updated);
+  ended auto-returns to lobby after `ENDED_SECS`=10 keeping roster/tasks/settings and
+  refreshing has_called_meeting; `/api/reset` shares `resetRoomToLobby`.
+- `4c4fde6`: task_capacity default 2 -> 1 (migration applied), single-occupancy stations.
+- E2E now 83/83 (finish-meeting, auto-lobby, capacity overrides in scenarios).
 
 ## Just completed — Phases 2-5, the whole game loop
 
