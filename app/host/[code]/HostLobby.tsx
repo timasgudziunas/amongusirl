@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, getCode, getPin, getToken, setPin } from "@/lib/client";
+import { api, getCode, getPin, getSavedTasks, getToken, setPin, setSavedTasks, type SavedTask } from "@/lib/client";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 type RosterEntry = { playerId: string; name: string; isHost: boolean; hasCalledMeeting: boolean };
@@ -66,6 +66,11 @@ export default function HostLobby({ code }: { code: string }) {
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [pinRejected, setPinRejected] = useState(false);
+
+  const [savedTasks] = useState<SavedTask[]>(() => getSavedTasks());
+  const [kickPendingId, setKickPendingId] = useState<string | null>(null);
+  const [kickBusy, setKickBusy] = useState(false);
+  const [kickError, setKickError] = useState<string | null>(null);
 
   const [forceBusy, setForceBusy] = useState(false);
   const [forceError, setForceError] = useState<string | null>(null);
@@ -142,9 +147,36 @@ export default function HostLobby({ code }: { code: string }) {
       return false;
     }
     setTaskError(null);
+    // Mirror every successfully saved list to this device so the next room can be
+    // seeded without retyping.
+    setSavedTasks(next.map((t) => ({ name: t.name, location: t.location, description: t.description })));
     await fetchState();
     setTaskBusy(false);
     return true;
+  }
+
+  async function loadSavedTasks() {
+    if (savedTasks.length === 0) return;
+    await saveTaskList(savedTasks.map((t) => ({ ...t })));
+  }
+
+  async function kickPlayer(playerId: string) {
+    if (!pin) return;
+    if (kickPendingId !== playerId) {
+      setKickPendingId(playerId);
+      return;
+    }
+    setKickPendingId(null);
+    setKickBusy(true);
+    setKickError(null);
+    const res = await api("/api/kick", { body: { pin, playerId } });
+    setKickBusy(false);
+    if (!res.ok) {
+      setKickError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
+      return;
+    }
+    fetchState();
   }
 
   async function moveTask(index: number, direction: -1 | 1) {
@@ -404,13 +436,26 @@ export default function HostLobby({ code }: { code: string }) {
             </h2>
             <ul className="au-card flex flex-col gap-1">
               {state.roster.map((p) => (
-                <li key={p.playerId}>
-                  {p.name}
-                  {p.isHost ? " (host)" : ""}
+                <li key={p.playerId} className="flex items-center justify-between gap-2">
+                  <span>
+                    {p.name}
+                    {p.isHost ? " (host)" : ""}
+                  </span>
+                  {isHostDevice && !p.isHost && (
+                    <button
+                      type="button"
+                      className="au-button-small"
+                      disabled={kickBusy}
+                      onClick={() => kickPlayer(p.playerId)}
+                    >
+                      {kickPendingId === p.playerId ? "Sure?" : "Remove"}
+                    </button>
+                  )}
                 </li>
               ))}
               {state.roster.length === 0 && <li className="au-dim">Waiting for players...</li>}
             </ul>
+            {kickError && <p className="au-error-banner">{kickError}</p>}
           </section>
 
           <section className="flex flex-col gap-3">
@@ -505,6 +550,12 @@ export default function HostLobby({ code }: { code: string }) {
               )}
               {state.tasks.length === 0 && <p className="au-dim">No tasks yet.</p>}
             </div>
+
+            {state.tasks.length === 0 && savedTasks.length > 0 && (
+              <button type="button" className="au-button" disabled={taskBusy} onClick={loadSavedTasks}>
+                Load saved tasks ({savedTasks.length})
+              </button>
+            )}
 
             <div className="au-card flex flex-col gap-2">
               <div className="flex gap-2">

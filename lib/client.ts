@@ -31,6 +31,35 @@ export function clearSession() {
   window.localStorage.removeItem(PIN_KEY);
 }
 
+// The host's last-authored task list, kept on the host device so a brand-new room
+// can be seeded in one tap instead of retyping every task. Deliberately NOT cleared
+// by clearSession — it should survive across rooms.
+const SAVED_TASKS_KEY = "au:lastTasks";
+
+export type SavedTask = { name: string; location: string; description: string };
+
+export function getSavedTasks(): SavedTask[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SAVED_TASKS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (t): t is SavedTask =>
+        typeof t?.name === "string" && typeof t?.location === "string" && typeof t?.description === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function setSavedTasks(tasks: SavedTask[]) {
+  // An intentionally emptied list still overwrites — the saved copy always mirrors
+  // the last list the host actually saved to a room.
+  window.localStorage.setItem(SAVED_TASKS_KEY, JSON.stringify(tasks));
+}
+
 export type ApiSuccess<T> = { ok: true; serverTime: string } & T;
 export type ApiFailure = { ok: false; error: string; serverTime: string };
 export type ApiResult<T> = ApiSuccess<T> | ApiFailure;
