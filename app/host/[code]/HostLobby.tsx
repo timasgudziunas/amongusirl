@@ -72,6 +72,8 @@ export default function HostLobby({ code }: { code: string }) {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [finishBusy, setFinishBusy] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
 
   const fetchState = useCallback(async () => {
     const seq = ++fetchSeq.current;
@@ -252,6 +254,7 @@ export default function HostLobby({ code }: { code: string }) {
       setResetConfirm(false);
       setResetError(null);
       setForceError(null);
+      setFinishError(null);
     }, 0);
     return () => clearTimeout(timeout);
   }, [state?.phase]);
@@ -264,6 +267,20 @@ export default function HostLobby({ code }: { code: string }) {
     setForceBusy(false);
     if (!res.ok) {
       setForceError(res.error);
+      if (res.error === "Invalid host PIN") setPinRejected(true);
+      return;
+    }
+    fetchState();
+  }
+
+  async function finishMeeting() {
+    if (!pin) return;
+    setFinishBusy(true);
+    setFinishError(null);
+    const res = await api("/api/finish-meeting", { body: { pin } });
+    setFinishBusy(false);
+    if (!res.ok) {
+      setFinishError(res.error);
       if (res.error === "Invalid host PIN") setPinRejected(true);
       return;
     }
@@ -360,6 +377,15 @@ export default function HostLobby({ code }: { code: string }) {
                 {forceBusy ? "Starting..." : "Force start discussion"}
               </button>
               {forceError && <p className="au-error-banner">{forceError}</p>}
+            </>
+          )}
+
+          {state.phase === "meeting" && (
+            <>
+              <button type="button" className="au-button" disabled={finishBusy} onClick={finishMeeting}>
+                {finishBusy ? "Finishing..." : "Finish meeting"}
+              </button>
+              {finishError && <p className="au-error-banner">{finishError}</p>}
             </>
           )}
 

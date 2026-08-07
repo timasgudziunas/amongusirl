@@ -71,7 +71,7 @@ imposter_tasks_count boolean not null default false
 ghost_tasks     boolean not null default false
 gathering_secs  int not null default 90  -- safety timeout, not the discussion timer
 meeting_secs    int not null default 90
-voting_secs     int not null default 30
+voting_secs     int not null default 15  -- (was 30 pre-2026-08-07)
 results_secs    int not null default 15
 created_at      timestamptz not null default now()
 ```
@@ -189,6 +189,7 @@ include `serverTime`.
 | `POST /meeting` | `{reason, bodyPlayerId?}` | `emergency`: consumes `has_called_meeting`, 409 if already used, `bodyPlayerId` ignored. `report`: **requires `bodyPlayerId`**, 400 if missing; server verifies that player `is_alive=false` and `reported=false`, 409 if not (stale popup, someone else already reported it, or they're not actually dead); sets that player's `reported=true`; never consumes `has_called_meeting`. Both: cancels every active claim, zeroes all occupancy, sets `meeting_reason`, `reported_body_name` (report only, else null), `meeting_no++`, `expected_here` = current living count, `here_count=0`, all `is_here=false`, `phase='gathering'`, `phase_ends_at = now() + gathering_secs` |
 | `POST /here` | — | Sets your `is_here`, increments `here_count`. When `here_count >= expected_here`, immediately advances to `meeting`. |
 | `POST /force-meeting` | `{pin}` | Host only. Skips the rest of the check-in and starts the discussion now. |
+| `POST /finish-meeting` | `{pin}` | Host only, `meeting` only. Ends the discussion early — same meeting->voting transition `/tick` makes on timeout. |
 | `POST /dead` | — | Victim self-reports. Sets `is_alive=false`. During `gathering`, decrements `expected_here` so the meeting isn't blocked waiting on a corpse. Drops their incomplete tasks from `tasks_total` unless `ghost_tasks`. Checks win. **Returns nothing to anyone else until the meeting starts.** |
 | `POST /vote` | `{targetId or null}` | Upsert into `votes`, increment `votes_cast`. Rejects if dead or phase != `voting`. If all living players have voted, immediately advance to `results`. |
 | `POST /reset` | `{pin}` | Back to `lobby`, wipes round state, keeps roster and task list. |

@@ -114,6 +114,11 @@ export default function RoomApp({ code }: { code: string }) {
   const [activeClaim, setActiveClaim] = useState<ActiveClaim | null>(null);
   const completingRef = useRef(false);
 
+  // Door screen: purely client-side, reuses the same white-screen render path
+  // as an active task claim. startedAt is read from the shared nowMs clock.
+  const [doorStartedAt, setDoorStartedAt] = useState<number | null>(null);
+  const DOOR_SECS = 5;
+
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
 
@@ -121,6 +126,8 @@ export default function RoomApp({ code }: { code: string }) {
   const [deadError, setDeadError] = useState<string | null>(null);
   const [hereError, setHereError] = useState<string | null>(null);
   const [killConfirm, setKillConfirm] = useState(false);
+  const [emergencyConfirm, setEmergencyConfirm] = useState(false);
+  const [roleRevealed, setRoleRevealed] = useState(false);
 
   const [bodiesOpen, setBodiesOpen] = useState(false);
   const [bodiesLoading, setBodiesLoading] = useState(false);
@@ -232,17 +239,33 @@ export default function RoomApp({ code }: { code: string }) {
   }, []);
 
   // A meeting being called cancels claims server-side. If we're on the white task
-  // screen when the phase leaves "playing", drop back immediately.
+  // or door screen when the phase leaves "playing", drop back immediately.
   useEffect(() => {
-    if (!activeClaim || !state || state.phase === "playing") return;
-    const timeout = setTimeout(() => setActiveClaim(null), 0);
+    if (!state || state.phase === "playing") return;
+    if (!activeClaim && doorStartedAt === null) return;
+    const timeout = setTimeout(() => {
+      setActiveClaim(null);
+      setDoorStartedAt(null);
+    }, 0);
     return () => clearTimeout(timeout);
-  }, [state, activeClaim]);
+  }, [state, activeClaim, doorStartedAt]);
+
+  // The door screen is a plain client-side countdown off the shared 1s clock —
+  // no API calls, no claim. At 0, drop back to the playing screen.
+  useEffect(() => {
+    if (doorStartedAt === null) return;
+    if (nowMs - doorStartedAt < DOOR_SECS * 1000) return;
+    const timeout = setTimeout(() => setDoorStartedAt(null), 0);
+    return () => clearTimeout(timeout);
+  }, [doorStartedAt, nowMs]);
 
   // Reset transient per-phase UI state whenever the phase changes.
   useEffect(() => {
     const timeout = setTimeout(() => {
       setKillConfirm(false);
+      setEmergencyConfirm(false);
+      setRoleRevealed(false);
+      setDoorStartedAt(null);
       setMeetingError(null);
       setDeadError(null);
       setHereError(null);
@@ -285,6 +308,7 @@ export default function RoomApp({ code }: { code: string }) {
   }, [activeClaim, nowMs, clockOffset, fetchMe, fetchState]);
 
   async function claimTask(taskId: string) {
+    setEmergencyConfirm(false);
     setClaimError(null);
     setBusyTaskId(taskId);
     const res = await api<{ secondsRequired: number }>("/api/task/claim", { body: { taskId } });
@@ -305,6 +329,11 @@ export default function RoomApp({ code }: { code: string }) {
   }
 
   async function callEmergencyMeeting() {
+    if (!emergencyConfirm) {
+      setEmergencyConfirm(true);
+      return;
+    }
+    setEmergencyConfirm(false);
     setMeetingError(null);
     const res = await api("/api/meeting", { body: { reason: "emergency" } });
     if (!res.ok) {
@@ -315,7 +344,13 @@ export default function RoomApp({ code }: { code: string }) {
     fetchMe();
   }
 
+  function openDoor() {
+    setEmergencyConfirm(false);
+    setDoorStartedAt(nowMs);
+  }
+
   async function openReportBody() {
+    setEmergencyConfirm(false);
     setBodiesError(null);
     setSelectedBodyId(null);
     setBodiesOpen(true);
@@ -351,6 +386,7 @@ export default function RoomApp({ code }: { code: string }) {
   }
 
   async function handleIWasKilled() {
+    setEmergencyConfirm(false);
     if (!killConfirm) {
       setKillConfirm(true);
       return;
@@ -427,6 +463,28 @@ export default function RoomApp({ code }: { code: string }) {
     );
   }
 
+  // The door screen: same white-screen render path as an active task, so a door
+  // and a task are indistinguishable at a glance. Purely client-side countdown.
+  if (doorStartedAt !== null && state.phase === "playing") {
+    const elapsedMs = Math.max(0, nowMs - doorStartedAt);
+    const remaining = Math.max(0, Math.ceil((DOOR_SECS * 1000 - elapsedMs) / 1000));
+    return (
+      <div className="au-task-white fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6 text-center">
+        <p className="text-8xl font-bold tabular-nums">{remaining}</p>
+        <div>
+          <p className="text-lg">Door</p>
+        </div>
+        <button
+          type="button"
+          className="border border-gray-300 px-4 py-2 text-sm text-gray-500"
+          onClick={() => setDoorStartedAt(null)}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
   // Visible on every phase except gathering and the white task screen above —
   // shared-localStorage tabs silently impersonate one player without this.
   const identity = me ? <p className="au-dim text-center text-sm">You are {me.name}</p> : null;
@@ -458,20 +516,39 @@ export default function RoomApp({ code }: { code: string }) {
         {identity}
         {deadBanner}
 
-        <section className="text-center">
-          {!me || me.role === null ? (
-            <h1 className="au-dim text-2xl tracking-wide">dealing roles...</h1>
-          ) : me.role === "imposter" ? (
-            <>
-              <h1 className="text-3xl tracking-wide">IMPOSTER</h1>
-              {me.partnerNames && me.partnerNames.length > 0 && (
-                <p className="au-dim mt-1">With: {me.partnerNames.join(", ")}</p>
-              )}
-            </>
-          ) : (
-            <h1 className="text-3xl tracking-wide">CREWMATE</h1>
-          )}
+        <section>
+          <button
+            type="button"
+            className="au-card w-full text-center"
+            onClick={() => setRoleRevealed((r) => !r)}
+          >
+            {!roleRevealed && <h1 className="text-2xl tracking-wide">ROLE &mdash; tap to reveal</h1>}
+            {roleRevealed && (!me || me.role === null) && (
+              <h1 className="au-dim text-2xl tracking-wide">dealing roles...</h1>
+            )}
+            {roleRevealed && me && me.role === "imposter" && (
+              <>
+                <h1 className="text-3xl tracking-wide">IMPOSTER</h1>
+                {me.partnerNames && me.partnerNames.length > 0 && (
+                  <p className="au-dim mt-1">With: {me.partnerNames.join(", ")}</p>
+                )}
+                <p className="au-dim mt-2 text-sm">tap to hide</p>
+              </>
+            )}
+            {roleRevealed && me && me.role === "crew" && (
+              <>
+                <h1 className="text-3xl tracking-wide">CREWMATE</h1>
+                <p className="au-dim mt-2 text-sm">tap to hide</p>
+              </>
+            )}
+          </button>
         </section>
+
+        {!dead && (
+          <button type="button" className="au-button" onClick={openDoor}>
+            Door
+          </button>
+        )}
 
         {state.tasksTotal !== undefined && (
           <p className="au-dim text-center">
@@ -511,7 +588,7 @@ export default function RoomApp({ code }: { code: string }) {
                     <button
                       type="button"
                       className="au-button-small"
-                      disabled={busyTaskId !== null || full || activeClaim !== null}
+                      disabled={busyTaskId !== null || full || activeClaim !== null || doorStartedAt !== null}
                       onClick={() => claimTask(task.taskId)}
                     >
                       {busyTaskId === task.taskId ? "..." : "Claim"}
@@ -534,7 +611,11 @@ export default function RoomApp({ code }: { code: string }) {
               disabled={!!me?.hasCalledMeeting}
               onClick={callEmergencyMeeting}
             >
-              {me?.hasCalledMeeting ? "Emergency used" : "Emergency Meeting"}
+              {me?.hasCalledMeeting
+                ? "Emergency used"
+                : emergencyConfirm
+                  ? "Tap again to confirm"
+                  : "Emergency Meeting"}
             </button>
             {meetingError && <p className="au-error">{meetingError}</p>}
 
@@ -631,6 +712,8 @@ export default function RoomApp({ code }: { code: string }) {
     const endsAtMs = state.phaseEndsAt ? new Date(state.phaseEndsAt).getTime() : null;
     const remaining =
       endsAtMs === null ? 0 : Math.max(0, Math.round((endsAtMs - (nowMs + clockOffset)) / 1000));
+    // Alive players to the top, dead to the bottom; stable within each group.
+    const sortedRoster = [...state.roster].sort((a, b) => Number(b.isAlive) - Number(a.isAlive));
     return (
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 px-6 py-10">
         {identity}
@@ -642,8 +725,8 @@ export default function RoomApp({ code }: { code: string }) {
             : "Emergency meeting"}
         </p>
         <ul className="au-card flex flex-col gap-1">
-          {state.roster.map((p) => (
-            <li key={p.playerId} className={p.isAlive ? "" : "au-dim line-through"}>
+          {sortedRoster.map((p) => (
+            <li key={p.playerId} className={p.isAlive ? "" : "au-dim line-through opacity-40"}>
               {p.name} &mdash; {p.isAlive ? "ALIVE" : "DEAD"}
             </li>
           ))}
