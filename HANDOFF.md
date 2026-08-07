@@ -38,10 +38,10 @@ Current state as of 2026-08-07 ~00:20 UTC (Phases 2-5 complete, pushed, Vercel d
 ## In progress / where it stopped
 
 - Push `22ac021` done; Vercel production deploy for that exact sha reported
-  **success** (GitHub deployment 5786345372, 00:11 UTC). The public production URL is
-  not recorded anywhere in this repo — note that `amongusirl.vercel.app` is a
-  DIFFERENT, unrelated project (a Vite SPA with the same name); do not smoke-test
-  against it. Add the real URL here once known.
+  **success** (GitHub deployment 5786345372, 00:11 UTC). **Public production URL:
+  https://amongusirl-phi.vercel.app** (confirmed live at 00:21 UTC — room create,
+  state, and tick all green; smoke room deleted). Note `amongusirl.vercel.app`
+  (no `-phi`) is a DIFFERENT, unrelated project — never smoke-test against it.
 - Old test rooms NUE7 / Q42Q / RL92 still exist in live DB in stale phases — harmless,
   but create a fresh room tonight.
 
