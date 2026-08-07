@@ -63,7 +63,7 @@ winner          text                     -- null|crew|imposters
 meeting_reason  text                     -- emergency|report
 reported_body_name text                  -- set only when meeting_reason='report'
 imposter_count  int not null default 2
-task_capacity   int not null default 2   -- max simultaneous occupants per station
+task_capacity   int not null default 1   -- max simultaneous occupants per station (was 2 pre-2026-08-07)
 tasks_per_player int                     -- null = every player does every task
 anonymous_voting boolean not null default true
 show_task_bar   boolean not null default true
