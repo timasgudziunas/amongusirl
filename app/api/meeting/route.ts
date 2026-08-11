@@ -100,6 +100,7 @@ export async function POST(req: Request) {
       phase: "gathering",
       meeting_reason: reason,
       reported_body_name: reportedBodyName,
+      meeting_caller_name: player.name,
       meeting_no: room.meeting_no + 1,
       expected_here: expectedHere,
       here_count: 0,

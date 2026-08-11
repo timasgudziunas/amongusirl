@@ -98,6 +98,7 @@ export async function POST(req: Request) {
           phase_ends_at: null,
           meeting_reason: null,
           reported_body_name: null,
+          meeting_caller_name: null,
           here_count: 0,
           expected_here: 0,
           votes_cast: 0,

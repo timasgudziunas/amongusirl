@@ -83,6 +83,8 @@ export async function GET(req: Request) {
         meetingSecs: room.meeting_secs,
         votingSecs: room.voting_secs,
         resultsSecs: room.results_secs,
+        taskSecs: room.task_secs,
+        doorSecs: room.door_secs,
       },
       validation,
     });
@@ -109,6 +111,7 @@ export async function GET(req: Request) {
       occupancy,
       taskCapacity: room.task_capacity,
       hasCalledMeeting: player.has_called_meeting,
+      doorSecs: room.door_secs,
     };
     if (room.show_task_bar) {
       payload.tasksDone = room.tasks_done;
@@ -127,6 +130,7 @@ export async function GET(req: Request) {
       phaseEndsAt: room.phase_ends_at,
       meetingReason: room.meeting_reason,
       reportedBodyName: room.reported_body_name,
+      meetingCallerName: room.meeting_caller_name,
     });
   }
 
@@ -158,6 +162,7 @@ export async function GET(req: Request) {
       phaseEndsAt: room.phase_ends_at,
       meetingReason: room.meeting_reason,
       reportedBodyName: room.reported_body_name,
+      meetingCallerName: room.meeting_caller_name,
     });
   }
 

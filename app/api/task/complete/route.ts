@@ -10,8 +10,6 @@ const bodySchema = z.object({
   taskId: z.string().min(1, "taskId is required"),
 });
 
-const MIN_HOLD_SECS = 14;
-
 export async function POST(req: Request) {
   const parsed = await parseBody(req, bodySchema);
   if (!parsed.ok) return parsed.response;
@@ -26,7 +24,7 @@ export async function POST(req: Request) {
 
   const { data: room, error: roomError } = await admin
     .from("rooms")
-    .select("round")
+    .select("round, task_secs")
     .eq("code", code)
     .maybeSingle();
   if (roomError || !room) {
@@ -45,7 +43,7 @@ export async function POST(req: Request) {
   }
 
   const heldMs = Date.now() - new Date(claim.started_at).getTime();
-  if (heldMs < MIN_HOLD_SECS * 1000) {
+  if (heldMs < (room.task_secs - 1) * 1000) {
     return errorJson("Hold the station a little longer", 409);
   }
 

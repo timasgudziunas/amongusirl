@@ -31,8 +31,8 @@ this file wins and PLAN.md should be corrected.
 - **Walking only.** No running, no speed-walking.
 - **No talking** while a round is live.
 - **No exaggerated movements.**
-- To open a door, you must **stand with your hand on it for 5 full seconds** first.
-  Doors can be closed instantly.
+- To open a door, you must **stand with your hand on it for a host-configured duration
+  (defaulting to 5 full seconds)** first. Doors can be closed instantly.
 
 ## Tasks
 
@@ -41,7 +41,7 @@ this file wins and PLAN.md should be corrected.
   - a **name**
   - a **location** in the house
   - an optional **short description**, only where the task isn't self-explanatory
-- Each task takes **15 seconds**.
+- Each task takes a **host-configured duration, defaulting to 15 seconds**.
 - **Up to 2 people may occupy a task station at the same time.** (Changed from the first
   session, which allowed only 1. Two is a deliberate simplification — with one, a large
   group spends the round queuing, and station locking becomes the main source of
@@ -68,7 +68,7 @@ this file wins and PLAN.md should be corrected.
 
 - Phone flashlight **on** = "I am currently doing a task." Off the instant you finish.
 - The app replaces the manual flashlight: the task screen goes **full white at maximum
-  brightness** for the 15 seconds, then snaps back to black. Same signal, automatic.
+  brightness** for the task duration, then snaps back to black. Same signal, automatic.
 
 ## Killing
 

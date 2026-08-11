@@ -91,8 +91,9 @@ The house is dark and everyone is holding a phone. Screen glow is an information
   counts, no "full") — a station filling up is itself a location leak. The server still
   publishes counts and enforces capacity; a claim on a busy station just 409s. Never
   show per-player task counts. Aggregate bar only, drawn as a bar without numbers.
-- The active-task screen is the one exception: pure white, full brightness, for exactly
-  15 seconds, then back to black. It doubles as the in-game flashlight signal.
+- The active-task screen is the one exception: pure white, full brightness, for the
+  host-configured task duration (default 15 seconds), then back to black. It doubles as
+  the in-game flashlight signal.
 - Big tap targets. People are using this one-handed, in the dark, walking.
 - No animations, no transitions, no toasts. Instant state changes. **The one deliberate
   animation in the app is the red pulse during `gathering`** — roughly 1Hz, full screen,

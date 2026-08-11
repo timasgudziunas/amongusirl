@@ -222,6 +222,7 @@ export const LOBBY_RESET_FIELDS = {
   winner: null,
   meeting_reason: null,
   reported_body_name: null,
+  meeting_caller_name: null,
   meeting_no: 0,
 } as const;
 

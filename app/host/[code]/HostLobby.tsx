@@ -20,6 +20,8 @@ type Settings = {
   meetingSecs: number;
   votingSecs: number;
   resultsSecs: number;
+  taskSecs: number;
+  doorSecs: number;
 };
 type Validation = { canStart: boolean; errors: string[] };
 
@@ -42,6 +44,57 @@ function suggestedImposters(playerCount: number): number {
   if (playerCount >= 15) return 3;
   if (playerCount >= 9) return 2;
   return 1;
+}
+
+function Stepper({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step = 1,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span>
+        {label}
+        {hint && <span className="au-dim"> {hint}</span>}
+      </span>
+      <span className="flex items-center gap-3">
+        <button
+          type="button"
+          className="au-button-small"
+          disabled={value <= min}
+          onClick={() => onChange(Math.max(min, value - step))}
+        >
+          -
+        </button>
+        <span className="min-w-12 text-center text-xl tabular-nums">
+          {value}
+          {suffix && <span className="au-dim text-sm">{suffix}</span>}
+        </span>
+        <button
+          type="button"
+          className="au-button-small"
+          disabled={value >= max}
+          onClick={() => onChange(Math.min(max, value + step))}
+        >
+          +
+        </button>
+      </span>
+    </label>
+  );
 }
 
 export default function HostLobby({ code }: { code: string }) {
@@ -384,6 +437,7 @@ export default function HostLobby({ code }: { code: string }) {
       <div className="text-center">
         <p className="au-dim text-sm uppercase tracking-wider">Room code</p>
         <h1 className="text-6xl tracking-widest">{code}</h1>
+        {state.phase === "lobby" && <p className="au-dim mt-1">{state.roster.length} players joined</p>}
       </div>
 
       {state.phase === "playing" && (
@@ -619,77 +673,140 @@ export default function HostLobby({ code }: { code: string }) {
           <section className="flex flex-col gap-3">
             <h2 className="au-dim text-sm uppercase tracking-wider">Settings</h2>
 
-            <label className="flex flex-col gap-1">
-              <span>
-                Imposter count
-                <span className="au-dim">
-                  {" "}
-                  (suggested {suggestedImposters(state.roster.length)} for {state.roster.length} players)
-                </span>
-              </span>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="au-button-small"
-                  onClick={() => updateSetting({ imposterCount: Math.max(1, settings.imposterCount - 1) })}
-                >
-                  -
-                </button>
-                <span className="text-xl">{settings.imposterCount}</span>
-                <button
-                  type="button"
-                  className="au-button-small"
-                  onClick={() => updateSetting({ imposterCount: settings.imposterCount + 1 })}
-                >
-                  +
-                </button>
-              </div>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span>Tasks per player (blank = all tasks)</span>
-              <input
-                className="au-input"
-                type="number"
+            <div className="au-card flex flex-col gap-3">
+              <h3 className="au-dim text-sm uppercase tracking-wider">Roles</h3>
+              <Stepper
+                label="Imposters"
+                hint={`(suggested ${suggestedImposters(state.roster.length)} for ${state.roster.length} players)`}
+                value={settings.imposterCount}
                 min={1}
-                placeholder="all"
-                value={settings.tasksPerPlayer ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  updateSetting({ tasksPerPlayer: raw === "" ? null : Math.max(1, Number(raw)) });
-                }}
+                max={10}
+                onChange={(n) => updateSetting({ imposterCount: n })}
               />
-            </label>
+            </div>
 
-            <label className="flex items-center justify-between gap-2">
-              <span>Anonymous voting</span>
-              <input
-                type="checkbox"
-                className="h-6 w-6"
-                checked={settings.anonymousVoting}
-                onChange={(e) => updateSetting({ anonymousVoting: e.target.checked })}
+            <div className="au-card flex flex-col gap-3">
+              <h3 className="au-dim text-sm uppercase tracking-wider">Tasks</h3>
+              <label className="flex flex-col gap-1">
+                <span>Tasks per player (blank = all tasks)</span>
+                <input
+                  className="au-input"
+                  type="number"
+                  min={1}
+                  placeholder="all"
+                  value={settings.tasksPerPlayer ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateSetting({ tasksPerPlayer: raw === "" ? null : Math.max(1, Number(raw)) });
+                  }}
+                />
+              </label>
+              <Stepper
+                label="Task duration"
+                value={settings.taskSecs}
+                min={5}
+                max={120}
+                step={5}
+                suffix="s"
+                onChange={(n) => updateSetting({ taskSecs: n })}
               />
-            </label>
+              <Stepper
+                label="Players per station"
+                value={settings.taskCapacity}
+                min={1}
+                max={10}
+                onChange={(n) => updateSetting({ taskCapacity: n })}
+              />
+              <label className="flex items-center justify-between gap-2">
+                <span>Show task progress bar</span>
+                <input
+                  type="checkbox"
+                  className="h-6 w-6"
+                  checked={settings.showTaskBar}
+                  onChange={(e) => updateSetting({ showTaskBar: e.target.checked })}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2">
+                <span>Imposter task completions count toward the bar</span>
+                <input
+                  type="checkbox"
+                  className="h-6 w-6"
+                  checked={settings.imposterTasksCount}
+                  onChange={(e) => updateSetting({ imposterTasksCount: e.target.checked })}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2">
+                <span>Ghost tasks (dead crewmates keep doing tasks)</span>
+                <input
+                  type="checkbox"
+                  className="h-6 w-6"
+                  checked={settings.ghostTasks}
+                  onChange={(e) => updateSetting({ ghostTasks: e.target.checked })}
+                />
+              </label>
+            </div>
 
-            <label className="flex items-center justify-between gap-2">
-              <span>Imposter task completions count toward the bar</span>
-              <input
-                type="checkbox"
-                className="h-6 w-6"
-                checked={settings.imposterTasksCount}
-                onChange={(e) => updateSetting({ imposterTasksCount: e.target.checked })}
+            <div className="au-card flex flex-col gap-3">
+              <h3 className="au-dim text-sm uppercase tracking-wider">Meetings and voting</h3>
+              <Stepper
+                label="Gather at table"
+                value={settings.gatheringSecs}
+                min={15}
+                max={600}
+                step={15}
+                suffix="s"
+                onChange={(n) => updateSetting({ gatheringSecs: n })}
               />
-            </label>
+              <Stepper
+                label="Discussion"
+                value={settings.meetingSecs}
+                min={15}
+                max={600}
+                step={15}
+                suffix="s"
+                onChange={(n) => updateSetting({ meetingSecs: n })}
+              />
+              <Stepper
+                label="Voting"
+                value={settings.votingSecs}
+                min={5}
+                max={600}
+                step={5}
+                suffix="s"
+                onChange={(n) => updateSetting({ votingSecs: n })}
+              />
+              <Stepper
+                label="Results screen"
+                value={settings.resultsSecs}
+                min={5}
+                max={60}
+                step={5}
+                suffix="s"
+                onChange={(n) => updateSetting({ resultsSecs: n })}
+              />
+              <label className="flex items-center justify-between gap-2">
+                <span>Anonymous voting</span>
+                <input
+                  type="checkbox"
+                  className="h-6 w-6"
+                  checked={settings.anonymousVoting}
+                  onChange={(e) => updateSetting({ anonymousVoting: e.target.checked })}
+                />
+              </label>
+            </div>
 
-            <label className="flex items-center justify-between gap-2">
-              <span>Ghost tasks (dead crewmates keep doing tasks)</span>
-              <input
-                type="checkbox"
-                className="h-6 w-6"
-                checked={settings.ghostTasks}
-                onChange={(e) => updateSetting({ ghostTasks: e.target.checked })}
+            <div className="au-card flex flex-col gap-3">
+              <h3 className="au-dim text-sm uppercase tracking-wider">Screens</h3>
+              <Stepper
+                label="Door screen"
+                value={settings.doorSecs}
+                min={2}
+                max={30}
+                step={1}
+                suffix="s"
+                onChange={(n) => updateSetting({ doorSecs: n })}
               />
-            </label>
+            </div>
 
             {settingsError && <p className="au-error-banner">{settingsError}</p>}
           </section>

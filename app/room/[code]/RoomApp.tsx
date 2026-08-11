@@ -18,6 +18,7 @@ type PlayingState = {
   occupancy: OccupancyEntry[];
   taskCapacity: number;
   hasCalledMeeting: boolean;
+  doorSecs: number;
   tasksDone?: number;
   tasksTotal?: number;
 };
@@ -29,6 +30,7 @@ type GatheringState = {
   phaseEndsAt: string | null;
   meetingReason: string | null;
   reportedBodyName: string | null;
+  meetingCallerName: string | null;
 };
 
 type MeetingRosterEntry = { playerId: string; name: string; isAlive: boolean };
@@ -38,6 +40,7 @@ type MeetingState = {
   phaseEndsAt: string | null;
   meetingReason: string | null;
   reportedBodyName: string | null;
+  meetingCallerName: string | null;
 };
 
 type VotingState = {
@@ -117,7 +120,6 @@ export default function RoomApp({ code }: { code: string }) {
   // Door screen: purely client-side, reuses the same white-screen render path
   // as an active task claim. startedAt is read from the shared nowMs clock.
   const [doorStartedAt, setDoorStartedAt] = useState<number | null>(null);
-  const DOOR_SECS = 5;
 
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -138,6 +140,8 @@ export default function RoomApp({ code }: { code: string }) {
   const [voteBusy, setVoteBusy] = useState(false);
   const [voteError, setVoteError] = useState<string | null>(null);
   const [votedLocally, setVotedLocally] = useState(false);
+
+  const doorSecs = state?.phase === "playing" ? state.doorSecs : 5;
 
   const bounceToHome = useCallback(() => {
     router.push("/");
@@ -254,10 +258,10 @@ export default function RoomApp({ code }: { code: string }) {
   // no API calls, no claim. At 0, drop back to the playing screen.
   useEffect(() => {
     if (doorStartedAt === null) return;
-    if (nowMs - doorStartedAt < DOOR_SECS * 1000) return;
+    if (nowMs - doorStartedAt < doorSecs * 1000) return;
     const timeout = setTimeout(() => setDoorStartedAt(null), 0);
     return () => clearTimeout(timeout);
-  }, [doorStartedAt, nowMs]);
+  }, [doorStartedAt, nowMs, doorSecs]);
 
   // Reset transient per-phase UI state whenever the phase changes.
   useEffect(() => {
@@ -467,7 +471,7 @@ export default function RoomApp({ code }: { code: string }) {
   // and a task are indistinguishable at a glance. Purely client-side countdown.
   if (doorStartedAt !== null && state.phase === "playing") {
     const elapsedMs = Math.max(0, nowMs - doorStartedAt);
-    const remaining = Math.max(0, Math.ceil((DOOR_SECS * 1000 - elapsedMs) / 1000));
+    const remaining = Math.max(0, Math.ceil((doorSecs * 1000 - elapsedMs) / 1000));
     return (
       <div className="au-task-white fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6 text-center">
         <p className="text-8xl font-bold tabular-nums">{remaining}</p>
@@ -496,6 +500,9 @@ export default function RoomApp({ code }: { code: string }) {
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6 px-6 py-16">
         <p className="text-center text-xl">Waiting for host...</p>
         {identity}
+        <h2 className="au-dim text-center text-sm uppercase tracking-wider">
+          Players ({state.roster.length})
+        </h2>
         <ul className="au-card flex flex-col gap-1">
           {state.roster.map((p) => (
             <li key={p.playerId}>{p.name}</li>
@@ -678,7 +685,14 @@ export default function RoomApp({ code }: { code: string }) {
           <p className="text-xl">
             {state.hereCount}/{state.expectedHere}
           </p>
-          {state.reportedBodyName && <p>{state.reportedBodyName}&apos;s body was found</p>}
+          {state.meetingReason === "report" && state.reportedBodyName && (
+            <p>
+              {state.meetingCallerName ?? "Someone"} found {state.reportedBodyName}&apos;s body
+            </p>
+          )}
+          {state.meetingReason === "emergency" && state.meetingCallerName && (
+            <p>{state.meetingCallerName} called an emergency meeting</p>
+          )}
           <div className="flex w-full max-w-xs flex-col gap-3">
             <button type="button" className="au-button" onClick={markHere}>
               I AM HERE
@@ -698,7 +712,14 @@ export default function RoomApp({ code }: { code: string }) {
         <p className="text-xl">
           {dead ? "Waiting" : `Waiting for others (${state.hereCount}/${state.expectedHere})`}
         </p>
-        {state.reportedBodyName && <p className="au-dim">{state.reportedBodyName}&apos;s body was found</p>}
+        {state.meetingReason === "report" && state.reportedBodyName && (
+          <p className="au-dim">
+            {state.meetingCallerName ?? "Someone"} found {state.reportedBodyName}&apos;s body
+          </p>
+        )}
+        {state.meetingReason === "emergency" && state.meetingCallerName && (
+          <p className="au-dim">{state.meetingCallerName} called an emergency meeting</p>
+        )}
       </main>
     );
   }
@@ -716,8 +737,8 @@ export default function RoomApp({ code }: { code: string }) {
         <p className="text-center text-3xl tabular-nums">{formatCountdown(remaining)}</p>
         <p className="text-center">
           {state.meetingReason === "report"
-            ? `${state.reportedBodyName ?? "A player"}'s body was reported`
-            : "Emergency meeting"}
+            ? `${state.meetingCallerName ?? "Someone"} found ${state.reportedBodyName ?? "a player"}'s body`
+            : `Emergency meeting called by ${state.meetingCallerName ?? "someone"}`}
         </p>
         <ul className="au-card flex flex-col gap-1">
           {sortedRoster.map((p) => (

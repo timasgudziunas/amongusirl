@@ -9,8 +9,6 @@ const bodySchema = z.object({
   taskId: z.string().min(1, "taskId is required"),
 });
 
-const CLAIM_TTL_SECS = 25;
-
 export async function POST(req: Request) {
   const parsed = await parseBody(req, bodySchema);
   if (!parsed.ok) return parsed.response;
@@ -28,7 +26,7 @@ export async function POST(req: Request) {
 
   const { data: room, error: roomError } = await admin
     .from("rooms")
-    .select("phase, round, task_capacity")
+    .select("phase, round, task_capacity, task_secs")
     .eq("code", code)
     .maybeSingle();
   if (roomError || !room) {
@@ -83,7 +81,7 @@ export async function POST(req: Request) {
     room_code: code,
     task_id: taskId,
     player_id: player.id,
-    expires_at: new Date(Date.now() + CLAIM_TTL_SECS * 1000).toISOString(),
+    expires_at: new Date(Date.now() + (room.task_secs + 10) * 1000).toISOString(),
   });
   if (insertError && insertError.code !== "23505") {
     return errorJson("Failed to claim station", 500);
@@ -95,5 +93,5 @@ export async function POST(req: Request) {
     .eq("room_code", code)
     .eq("task_id", taskId);
 
-  return json({ ok: true, secondsRequired: 15 });
+  return json({ ok: true, secondsRequired: room.task_secs });
 }
