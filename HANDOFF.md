@@ -1,84 +1,100 @@
-# HANDOFF.md
+# HANDOFF.md — Session Handoff (updated 2026-08-11 ~23:58 UTC, supersedes all 2026-08-07 and earlier versions)
 
-Current state as of 2026-08-07 ~01:10 UTC (Phases 2-5 complete plus two revision waves,
-all deployed green to https://amongusirl-phi.vercel.app).
+> For a fresh Claude session with no memory of prior conversations: read this file first,
+> then the repo CLAUDE.md (rules + security invariants), then GAMERULES.md if touching
+> game behavior. PLAN.md is the original build plan; the game is built and has been
+> played successfully.
 
-## Revision waves after the phase build (owner-requested, all live)
+## Current state
 
-- `c2a4337`: role hidden behind tap-to-reveal card; emergency-meeting two-step confirm;
-  Door button (client-only 5s white screen, indistinguishable from a task); host
-  Finish-meeting button + `/api/finish-meeting`; meeting roster alive-first with dead
-  at 40% opacity; voting_secs default 30 -> 15 (migration applied).
-- `39034d5`: task bar is a numberless progress bar; occupancy display fully removed
-  from the task list (server still enforces capacity; CLAUDE.md UI constraint updated);
-  ended auto-returns to lobby after `ENDED_SECS`=10 keeping roster/tasks/settings and
-  refreshing has_called_meeting; `/api/reset` shares `resetRoomToLobby`.
-- `4c4fde6`: task_capacity default 2 -> 1 (migration applied), single-occupancy stations.
-- E2E now 83/83 (finish-meeting, auto-lobby, capacity overrides in scenarios).
+- Game is **live and played**: first real game night (2026-08-10 or so) "worked
+  perfectly" per the owner. Production: **https://amongusirl-phi.vercel.app**.
+- Latest commit `f3b0337` deployed to production, state READY (verified 23:50 UTC),
+  smoke-tested live 23:53 UTC: room create, `/api/state` returning the new settings,
+  `/api/settings` updating `taskSecs`/`doorSecs`/`taskCapacity` — all green.
+- DB migrations applied to live (23:47 UTC): `rooms.task_secs` (default 15),
+  `rooms.door_secs` (default 5), `rooms.meeting_caller_name` (nullable).
+- Supabase CLI is now **linked** on this machine (login + link done by owner in own
+  terminal 2026-08-11; DB password in Windows keyring). `npx supabase db push` works
+  non-interactively from this repo. `supabase/.temp/` is gitignored.
 
-## Just completed — Phases 2-5, the whole game loop
+## Just completed (this session, commit `f3b0337`)
 
-- Server (`001b6e6`): `lib/game.ts` (occupancy resync, task-counter recompute with
-  ghost_tasks/dead-player rules, win check, vote tally, idempotent voting->results
-  advance) + routes `task/claim|complete|abandon`, `tick`, `meeting`, `bodies`, `here`,
-  `force-meeting`, `dead`, `vote`, `reset`; `/state` extended for all phases; `/me` now
-  returns `name` + `hasCalledMeeting`. All phase transitions are conditional UPDATEs
-  (`WHERE phase=$expected AND phase_ends_at < now()`) — 12 simultaneous ticks produce
-  one transition (verified with a concurrent tick storm).
-- Client (`22ac021`): full RoomApp rewrite — playing screen (claims, occupancy n/cap,
-  white 15s task screen, delayed task bar, emergency/report-body/I-was-killed),
-  gathering red pulse (1Hz keyframe, `prefers-reduced-motion` -> solid red), meeting/
-  voting/results/ended screens, ghost view, "You are {name}" identity line. HostLobby:
-  force-meeting (gathering), two-step reset, loud `.au-error-banner` for settings/task/
-  start errors.
-- E2E: 73/73 checks green, run twice, against local dev + live Supabase at 4p/1imp and
-  6p/2imp — capacity refusal at 2, claim expiry, delayed reveal (<=6s), death invisible
-  during playing, bodies popup + double-report rejection, gathering unblock via /dead,
-  tick-storm idempotency, tie->skip, open-voting ballots (and no `ballots` key when
-  anonymous), all three win conditions. Test script: this session's scratchpad
-  `test-phases2-5.mjs` (+ `cleanup-rooms.mjs`); test rooms deleted from live DB.
-
-## The owner's reported bugs — root cause (settled, don't re-litigate)
-
-- "Everyone got crewmate + same 3 tasks" (rooms NUE7/Q42Q): NOT a server bug. DB had
-  correct roles (2 imposters) and distinct per-player samples. All tabs shared one
-  localStorage token, so every tab rendered the last joiner's view. Signature: in both
-  rooms the host ended up being the last joiner (claim-PIN flow on a shared token).
-  On separate phones this cannot happen. Mitigation shipped: identity line everywhere.
-- "Set 1 imposter but got 2": settings POST 403'd silently (tab had lost host identity).
-  DB still had default `imposter_count=2`. Mitigation shipped: error banners. Host must
-  re-set imposter count to 1 in the lobby before tonight's game.
+- **Waiting players see the lobby size**: "Players (N)" heading on the player waiting
+  screen; "N players joined" under the room code on the host screen.
+- **Host settings panel reorganized into grouped cards** (Roles / Tasks / Meetings and
+  voting / Screens) with big +/- steppers (`Stepper` component local to HostLobby):
+  imposters, tasks per player, **task duration** (5-120s, was hardcoded 15), **players
+  per station** (task_capacity, existed server-side but had no UI), show-task-bar,
+  imposter-tasks-count, ghost tasks, gathering/discussion/voting/results timers
+  (existed server-side, no UI before), anonymous voting, **door screen duration**
+  (2-30s, was a client constant; now served in the playing-state payload).
+- Task duration wiring: `/api/task/claim` returns `secondsRequired: room.task_secs`,
+  claim TTL = task_secs + 10s grace, `/api/task/complete` min hold = task_secs - 1.
+- **Meeting attribution**: `rooms.meeting_caller_name` set by `/api/meeting`, cleared
+  on results->playing and every lobby reset. Gathering + meeting screens now show
+  "{caller} called an emergency meeting" / "{caller} found {victim}'s body".
+- GAMERULES.md and CLAUDE.md updated where they stated fixed 15s/5s durations.
+- Implementation delegated to Sonnet subagents, QA'd + built + deployed by orchestrator.
 
 ## In progress / where it stopped
 
-- Push `22ac021` done; Vercel production deploy for that exact sha reported
-  **success** (GitHub deployment 5786345372, 00:11 UTC). **Public production URL:
-  https://amongusirl-phi.vercel.app** (confirmed live at 00:21 UTC — room create,
-  state, and tick all green; smoke room deleted). Note `amongusirl.vercel.app`
-  (no `-phi`) is a DIFFERENT, unrelated project — never smoke-test against it.
-- Old test rooms NUE7 / Q42Q / RL92 still exist in live DB in stale phases — harmless,
-  but create a fresh room tonight.
+- Nothing in flight. Build green, lint clean, deploy READY, live API smoke-tested.
+- Not yet exercised in a browser: the reorganized host settings UI (steppers) has only
+  been verified by build + live API, not a multi-profile visual pass.
 
 ## Next steps (priority order)
 
-1. Verify deploy green, then a real 4-phone dry run (separate devices or browser
-   profiles, never tabs) through a full round incl. a meeting — PLAN.md acceptance.
-2. Pre-game checklist at the bottom of PLAN.md (author tasks for the house, set
-   imposter count, QR/code on paper, cellular check).
-3. Optional Phase 6 leftovers not built: QR code on host page, nicer end screen.
-   (Open voting, reset, and reduced-motion ARE built.)
+1. Owner opens host screen on the live site and eyeballs the new grouped settings.
+2. Next game night: confirm task duration and station capacity behave at the values
+   the host picks (server enforces both; client countdown follows `secondsRequired`).
+3. Still-unbuilt niceties from Phase 6: QR code on host page, nicer end screen.
+4. Declined for now (offer stands): per-player emergency-meeting count setting.
 
 ## Open decisions / blockers
 
-- None. Reset intentionally clears `has_called_meeting` (reset = new game) while
-  start-round preserves it across rounds of the same game (per GAMERULES).
-- Meeting race loser gets their emergency button / body-report refunded (rollback in
-  /api/meeting) — deliberate.
+- None. Settings only change in the lobby (server-enforced) — mid-round edits are
+  impossible by design, so task-duration changes can't desync a running round.
+- Reset clears `has_called_meeting` (reset = new game); start-round preserves it
+  across rounds of the same game — settled per GAMERULES, don't re-litigate.
+- 2026-08-07 "everyone got crewmate/same tasks" and "settings silently 403" reports:
+  settled root causes (shared localStorage across tabs; lost host identity). Not
+  server bugs; mitigations shipped (identity line, error banners). Don't re-open.
 
-## Operational notes a fresh session would lack
+## Where everything lives
 
-- DB creds in `supabasedetails.md` (gitignored). Project ref `nxrgkcmnxetiyqnmrrqh`.
-  Migrations push via pooler URL (see git history of this file or supabasedetails.md);
-  no schema changes were needed this session.
-- A stray `next dev` (PID 22644) may still hold port 3000 on the owner's machine.
-- Deploys: push to `main` on GitHub -> Vercel production (no local vercel link).
+| path | what it is |
+|---|---|
+| `app/host/[code]/HostLobby.tsx` | host screen incl. grouped settings + `Stepper` |
+| `app/room/[code]/RoomApp.tsx` | player app, all phases |
+| `lib/game.ts` | shared game logic (win check, tally, resets, `LOBBY_RESET_FIELDS`) |
+| `lib/validation.ts` | start-round validation, shared by /state and /start-round |
+| `app/api/settings/route.ts` | host settings endpoint (all zod-bounded) |
+| `supabase/migrations/` | schema; latest two are task/door secs + meeting caller |
+| `supabasedetails.md` (gitignored) | DB creds, project ref `nxrgkcmnxetiyqnmrrqh` |
+
+## Operational landmines (numbered, never drop)
+
+1. `amongusirl.vercel.app` (no `-phi`) is a DIFFERENT unrelated project — never
+   smoke-test against it. Production is `amongusirl-phi.vercel.app`.
+2. Browser tabs share localStorage — always test with separate profiles/devices,
+   never tabs (root cause of the 08-07 game-night confusion).
+3. `npm run build` fails inside the sandboxed shell (Google Fonts fetch blocked) —
+   run it with network access.
+4. Supabase CLI login cannot run in the in-session shell (non-TTY) — owner runs
+   `npx supabase login` / `link` in a real terminal; after that `db push` works here.
+5. Stale junk rooms in live DB (NUE7, Q42Q, RL92 from 08-07 testing; 7HEP from
+   today's smoke test) — harmless, no delete endpoint exists; ignore them.
+6. The API now selects `task_secs`/`door_secs`/`meeting_caller_name` — code deployed
+   without those migrations hard-breaks `/api/state`. Always `db push` before push.
+
+## Quick health check
+
+```bash
+curl -s -X POST https://amongusirl-phi.vercel.app/api/room \
+  -H "Content-Type: application/json" -d '{"hostName":"Health","pin":"0000"}'
+# then with the returned code+token:
+curl -s "https://amongusirl-phi.vercel.app/api/state?code=CODE" -H "x-player-token: TOKEN"
+```
+Healthy ≈ first call returns `{"ok":true,"code":...}`, second returns lobby state whose
+`settings` object includes `taskSecs` and `doorSecs`.
