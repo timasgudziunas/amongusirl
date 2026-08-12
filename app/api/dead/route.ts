@@ -25,8 +25,51 @@ export async function POST(req: Request) {
   if (roomError || !room) {
     return errorJson("Room not found", 404);
   }
-  if (room.phase !== "playing" && room.phase !== "gathering") {
+  if (room.phase !== "playing" && room.phase !== "gathering" && room.phase !== "sabotage") {
     return errorJson("Can't self-report a death right now", 409);
+  }
+
+  if (room.phase === "playing") {
+    const { data: roleRow } = await admin
+      .from("player_roles")
+      .select("role")
+      .eq("player_id", player.id)
+      .eq("round", room.round)
+      .maybeSingle();
+
+    if (roleRow?.role === "imposter") {
+      // Secret sabotage trigger. The response below is identical to a crewmate's death
+      // report — the server is the only place that knows the difference (invariant: the
+      // client never branches on role for this button, and no caller is ever recorded).
+      await admin.from("task_claims").delete().eq("room_code", code);
+      await admin.from("task_occupancy").update({ occupied: 0 }).eq("room_code", code);
+
+      const { data: roster } = await admin.from("players").select("id").eq("room_code", code);
+      const rosterIds = (roster ?? []).map((p) => p.id as string);
+      const idFilter = rosterIds.length > 0 ? rosterIds : [""];
+      await admin.from("player_secrets").update({ is_here: false }).in("player_id", idFilter);
+
+      const { data: secretRows } = await admin
+        .from("player_secrets")
+        .select("player_id, is_alive")
+        .in("player_id", idFilter);
+      const expectedHere = (secretRows ?? []).filter((s) => s.is_alive).length;
+
+      // Conditional claim: a simultaneous meeting call wins the race and this becomes a
+      // no-op; either way the caller learns nothing from the response.
+      await admin
+        .from("rooms")
+        .update({
+          phase: "sabotage",
+          phase_ends_at: new Date(Date.now() + room.sabotage_secs * 1000).toISOString(),
+          here_count: 0,
+          expected_here: expectedHere,
+        })
+        .eq("code", code)
+        .eq("phase", "playing");
+
+      return json({ ok: true });
+    }
   }
 
   const { error: deathError } = await admin
@@ -37,7 +80,7 @@ export async function POST(req: Request) {
     return errorJson("Failed to record death", 500);
   }
 
-  if (room.phase === "gathering") {
+  if (room.phase === "gathering" || room.phase === "sabotage") {
     const { data: roster } = await admin.from("players").select("id").eq("room_code", code);
     const rosterIds = (roster ?? []).map((p) => p.id as string);
     const idFilter = rosterIds.length > 0 ? rosterIds : [""];
@@ -51,14 +94,22 @@ export async function POST(req: Request) {
     await admin.from("rooms").update({ here_count: hereCount, expected_here: expectedHere }).eq("code", code);
 
     if (hereCount >= expectedHere) {
-      await admin
-        .from("rooms")
-        .update({
-          phase: "meeting",
-          phase_ends_at: new Date(Date.now() + room.meeting_secs * 1000).toISOString(),
-        })
-        .eq("code", code)
-        .eq("phase", "gathering");
+      if (room.phase === "gathering") {
+        await admin
+          .from("rooms")
+          .update({
+            phase: "meeting",
+            phase_ends_at: new Date(Date.now() + room.meeting_secs * 1000).toISOString(),
+          })
+          .eq("code", code)
+          .eq("phase", "gathering");
+      } else {
+        await admin
+          .from("rooms")
+          .update({ phase: "playing", phase_ends_at: null, here_count: 0, expected_here: 0 })
+          .eq("code", code)
+          .eq("phase", "sabotage");
+      }
     }
   } else {
     // room.phase === "playing" — drops the victim's incomplete tasks from the total

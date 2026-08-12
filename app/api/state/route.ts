@@ -85,6 +85,7 @@ export async function GET(req: Request) {
         resultsSecs: room.results_secs,
         taskSecs: room.task_secs,
         doorSecs: room.door_secs,
+        sabotageSecs: room.sabotage_secs,
       },
       validation,
     });
@@ -118,6 +119,16 @@ export async function GET(req: Request) {
       payload.tasksTotal = room.tasks_total;
     }
     return json(payload);
+  }
+
+  if (room.phase === "sabotage") {
+    return json({
+      ok: true,
+      phase: room.phase,
+      hereCount: room.here_count,
+      expectedHere: room.expected_here,
+      phaseEndsAt: room.phase_ends_at,
+    });
   }
 
   if (room.phase === "gathering") {

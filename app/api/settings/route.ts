@@ -21,6 +21,7 @@ const bodySchema = z.object({
   resultsSecs: secs.optional(),
   taskSecs: z.number().int().min(5, "Task duration must be at least 5 seconds").max(120, "Task duration must be at most 120 seconds").optional(),
   doorSecs: z.number().int().min(2, "Door screen must be at least 2 seconds").max(30, "Door screen must be at most 30 seconds").optional(),
+  sabotageSecs: z.number().int().min(10, "Sabotage timer must be at least 10 seconds").max(300, "Sabotage timer must be at most 300 seconds").optional(),
 });
 
 export async function POST(req: Request) {
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
   if (data.resultsSecs !== undefined) updates.results_secs = data.resultsSecs;
   if (data.taskSecs !== undefined) updates.task_secs = data.taskSecs;
   if (data.doorSecs !== undefined) updates.door_secs = data.doorSecs;
+  if (data.sabotageSecs !== undefined) updates.sabotage_secs = data.sabotageSecs;
 
   if (Object.keys(updates).length === 0) {
     return json({ ok: true });

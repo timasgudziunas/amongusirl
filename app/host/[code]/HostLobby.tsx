@@ -22,6 +22,7 @@ type Settings = {
   resultsSecs: number;
   taskSecs: number;
   doorSecs: number;
+  sabotageSecs: number;
 };
 type Validation = { canStart: boolean; errors: string[] };
 
@@ -34,7 +35,7 @@ type LobbyState = {
   validation: Validation;
 };
 type PlayingState = { phase: "playing"; round: number; roster: { playerId: string; name: string }[] };
-type OtherPhase = "gathering" | "meeting" | "voting" | "results" | "ended";
+type OtherPhase = "gathering" | "sabotage" | "meeting" | "voting" | "results" | "ended";
 type OtherState = { phase: OtherPhase };
 type StateResponse = LobbyState | PlayingState | OtherState;
 
@@ -783,6 +784,15 @@ export default function HostLobby({ code }: { code: string }) {
                 step={5}
                 suffix="s"
                 onChange={(n) => updateSetting({ resultsSecs: n })}
+              />
+              <Stepper
+                label="Sabotage timer"
+                value={settings.sabotageSecs}
+                min={10}
+                max={300}
+                step={5}
+                suffix="s"
+                onChange={(n) => updateSetting({ sabotageSecs: n })}
               />
               <label className="flex items-center justify-between gap-2">
                 <span>Anonymous voting</span>

@@ -22,8 +22,8 @@ export async function POST(req: Request) {
   if (roomError || !room) {
     return errorJson("Room not found", 404);
   }
-  if (room.phase !== "gathering") {
-    return errorJson("Check-in only happens while gathering", 409);
+  if (room.phase !== "gathering" && room.phase !== "sabotage") {
+    return errorJson("Check-in isn't open right now", 409);
   }
 
   if (secrets.is_here) {
@@ -50,14 +50,22 @@ export async function POST(req: Request) {
   await admin.from("rooms").update({ here_count: hereCount }).eq("code", code);
 
   if (hereCount >= room.expected_here) {
-    await admin
-      .from("rooms")
-      .update({
-        phase: "meeting",
-        phase_ends_at: new Date(Date.now() + room.meeting_secs * 1000).toISOString(),
-      })
-      .eq("code", code)
-      .eq("phase", "gathering");
+    if (room.phase === "gathering") {
+      await admin
+        .from("rooms")
+        .update({
+          phase: "meeting",
+          phase_ends_at: new Date(Date.now() + room.meeting_secs * 1000).toISOString(),
+        })
+        .eq("code", code)
+        .eq("phase", "gathering");
+    } else {
+      await admin
+        .from("rooms")
+        .update({ phase: "playing", phase_ends_at: null, here_count: 0, expected_here: 0 })
+        .eq("code", code)
+        .eq("phase", "sabotage");
+    }
   }
 
   return json({ ok: true });

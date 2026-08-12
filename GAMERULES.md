@@ -82,6 +82,21 @@ this file wins and PLAN.md should be corrected.
   the round resumes, the round is frozen — everyone is walking to the table with their
   screen flashing, and a kill during that walk is unfalsifiable.
 
+## Sabotage
+
+- **Before the game, the group agrees on one room in the house as the sabotage room.**
+- **A living imposter can secretly trigger a sabotage from the same "I was killed" button
+  crewmates use.** The app shows no difference between roles on this button, and it never
+  reveals who triggered it.
+- Every phone shows a full-screen sabotage alarm with a countdown (a host setting,
+  defaulting to 30 seconds). **Everyone still alive, crew and imposters alike, must walk
+  to the sabotage room and tap "I AM HERE."**
+- Players killed on the way self-report from the alarm screen, same as during a gathering.
+- **When everyone alive has checked in, the alarm ends and play resumes.**
+- **Anyone who hasn't checked in when the timer hits zero is eliminated automatically** —
+  crew and imposters alike. These deaths are not bodies lying in the house; they can't be
+  reported.
+
 ## Bodies and meetings
 
 - **You cannot report from where the body is.** You must walk to the emergency meeting

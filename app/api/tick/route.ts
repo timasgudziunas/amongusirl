@@ -59,6 +59,36 @@ export async function POST(req: Request) {
       .lt("phase_ends_at", nowIso)
       .select("code");
     if (claimed && claimed.length > 0) phase = "meeting";
+  } else if (phase === "sabotage" && timerExpired) {
+    const { data: claimed } = await admin
+      .from("rooms")
+      .update({ phase: "playing", phase_ends_at: null, here_count: 0, expected_here: 0 })
+      .eq("code", code)
+      .eq("phase", "sabotage")
+      .lt("phase_ends_at", nowIso)
+      .select("code");
+    if (claimed && claimed.length > 0) {
+      // Everyone living who never checked in dies to the sabotage — crew and imposters
+      // alike. reported=true: these are rule deaths, not bodies lying in the house, so
+      // they must never appear in /api/bodies.
+      const { data: roster } = await admin.from("players").select("id").eq("room_code", code);
+      const rosterIds = (roster ?? []).map((p) => p.id as string);
+      if (rosterIds.length > 0) {
+        await admin
+          .from("player_secrets")
+          .update({ is_alive: false, reported: true })
+          .in("player_id", rosterIds)
+          .eq("is_alive", true)
+          .eq("is_here", false);
+      }
+      const winner = await checkWin(admin, room);
+      if (winner) {
+        await endGame(admin, code, winner);
+        phase = "ended";
+      } else {
+        phase = "playing";
+      }
+    }
   } else if (phase === "meeting" && timerExpired) {
     const { data: claimed } = await admin
       .from("rooms")

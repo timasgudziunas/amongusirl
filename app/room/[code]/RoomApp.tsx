@@ -33,6 +33,13 @@ type GatheringState = {
   meetingCallerName: string | null;
 };
 
+type SabotageState = {
+  phase: "sabotage";
+  hereCount: number;
+  expectedHere: number;
+  phaseEndsAt: string | null;
+};
+
 type MeetingRosterEntry = { playerId: string; name: string; isAlive: boolean };
 type MeetingState = {
   phase: "meeting";
@@ -75,6 +82,7 @@ type EndedState = { phase: "ended"; winner: "crew" | "imposters" | null; roster:
 type StateResponse =
   | LobbyState
   | PlayingState
+  | SabotageState
   | GatheringState
   | MeetingState
   | VotingState
@@ -668,6 +676,47 @@ export default function RoomApp({ code }: { code: string }) {
             {deadError && <p className="au-error">{deadError}</p>}
           </section>
         )}
+      </main>
+    );
+  }
+
+  if (state.phase === "sabotage") {
+    const endsAtMs = state.phaseEndsAt ? new Date(state.phaseEndsAt).getTime() : null;
+    const remaining =
+      endsAtMs === null ? 0 : Math.max(0, Math.round((endsAtMs - (nowMs + clockOffset)) / 1000));
+    const dead = me?.isAlive === false;
+    const checkedIn = !!me?.isHere;
+    const pulsing = !dead && !checkedIn;
+
+    if (pulsing) {
+      return (
+        <div className="au-pulse fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6 text-center">
+          <h1 className="text-4xl font-bold">SABOTAGE</h1>
+          <p className="text-7xl font-bold tabular-nums">{remaining}</p>
+          <h1 className="text-3xl font-bold">WALK TO THE SABOTAGE ROOM</h1>
+          <p className="text-xl">
+            {state.hereCount}/{state.expectedHere}
+          </p>
+          <div className="flex w-full max-w-xs flex-col gap-3">
+            <button type="button" className="au-button" onClick={markHere}>
+              I AM HERE
+            </button>
+            <button type="button" className="au-button" onClick={handleIWasKilled}>
+              {killConfirm ? "Tap again to confirm" : "I WAS KILLED"}
+            </button>
+          </div>
+          {hereError && <p className="au-error">{hereError}</p>}
+          {deadError && <p className="au-error">{deadError}</p>}
+        </div>
+      );
+    }
+
+    return (
+      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+        <p className="text-3xl tabular-nums">{remaining}</p>
+        <p className="text-xl">
+          {dead ? "Waiting" : `Waiting for others (${state.hereCount}/${state.expectedHere})`}
+        </p>
       </main>
     );
   }

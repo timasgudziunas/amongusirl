@@ -37,7 +37,7 @@ Violating any of these makes the app pointless:
    `votes`, `player_tasks`, or `task_claims` (secret: who actually holds a claim).
 4. **The client never calls `supabase.from(...)` for anything except `rooms`,
    `players`, `tasks`, and `task_occupancy`.** Everything else goes through `/api/*`.
-5. **Deaths are not published during the `playing` or `gathering` phases.** Alive/dead is
+5. **Deaths are not published during the `playing`, `gathering`, or `sabotage` phases.** Alive/dead is
    only ever returned by `/api/state` when `phase` is `meeting`, `voting`, `results`, or
    `ended`. **The one deliberate exception is `GET /api/bodies`**, which a living player
    hits only when they actively choose "Report Body" — it returns names of the dead not
@@ -122,7 +122,8 @@ Do not build them even if they seem easy, and do not leave TODOs for them:
 
 - Imposter kill flow or kill-cooldown timers (a kill is a finger to the victim's midsection;
   imposters count their own 15-second cooldown; the victim self-reports via one button)
-- Sabotage, vents, security cameras, admin table
+- Vents, security cameras, admin table (sabotage IS built: a living imposter's "I was
+  killed" button secretly triggers it; the client never branches on role)
 - Player accounts, stats, or match history
 - Sound, haptics, or push notifications
 - Multiple concurrent rounds per room beyond a simple round counter
