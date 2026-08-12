@@ -23,6 +23,8 @@ type Settings = {
   taskSecs: number;
   doorSecs: number;
   sabotageSecs: number;
+  sabotageCooldownSecs: number;
+  sabotageRooms: string[];
 };
 type Validation = { canStart: boolean; errors: string[] };
 
@@ -105,6 +107,7 @@ export default function HostLobby({ code }: { code: string }) {
   const fetchSeq = useRef(0);
 
   const [newTask, setNewTask] = useState<EditableTask>({ name: "", location: "", description: "" });
+  const [newSabotageRoom, setNewSabotageRoom] = useState("");
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -785,15 +788,6 @@ export default function HostLobby({ code }: { code: string }) {
                 suffix="s"
                 onChange={(n) => updateSetting({ resultsSecs: n })}
               />
-              <Stepper
-                label="Sabotage timer"
-                value={settings.sabotageSecs}
-                min={10}
-                max={300}
-                step={5}
-                suffix="s"
-                onChange={(n) => updateSetting({ sabotageSecs: n })}
-              />
               <label className="flex items-center justify-between gap-2">
                 <span>Anonymous voting</span>
                 <input
@@ -803,6 +797,70 @@ export default function HostLobby({ code }: { code: string }) {
                   onChange={(e) => updateSetting({ anonymousVoting: e.target.checked })}
                 />
               </label>
+            </div>
+
+            <div className="au-card flex flex-col gap-3">
+              <h3 className="au-dim text-sm uppercase tracking-wider">Sabotage</h3>
+              <Stepper
+                label="Sabotage timer"
+                value={settings.sabotageSecs}
+                min={10}
+                max={300}
+                step={5}
+                suffix="s"
+                onChange={(n) => updateSetting({ sabotageSecs: n })}
+              />
+              <Stepper
+                label="Sabotage cooldown"
+                hint="(0 = off)"
+                value={settings.sabotageCooldownSecs}
+                min={0}
+                max={600}
+                step={15}
+                suffix="s"
+                onChange={(n) => updateSetting({ sabotageCooldownSecs: n })}
+              />
+              <div className="flex flex-col gap-2">
+                <span>Sabotage rooms (one is picked at random each sabotage)</span>
+                {settings.sabotageRooms.map((name, index) => (
+                  <div key={`${name}-${index}`} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                    <button
+                      type="button"
+                      className="au-button-small"
+                      onClick={() =>
+                        updateSetting({ sabotageRooms: settings.sabotageRooms.filter((_, i) => i !== index) })
+                      }
+                    >
+                      X
+                    </button>
+                  </div>
+                ))}
+                {settings.sabotageRooms.length === 0 && (
+                  <p className="au-dim">No rooms yet. Without any, the overlay shows a generic message.</p>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    className="au-input"
+                    placeholder="Room name"
+                    maxLength={80}
+                    value={newSabotageRoom}
+                    onChange={(e) => setNewSabotageRoom(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="au-button-small"
+                    onClick={() => {
+                      const name = newSabotageRoom.trim();
+                      if (name.length === 0) return;
+                      updateSetting({ sabotageRooms: [...settings.sabotageRooms, name] });
+                      setNewSabotageRoom("");
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="au-card flex flex-col gap-3">

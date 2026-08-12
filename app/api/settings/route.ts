@@ -22,6 +22,8 @@ const bodySchema = z.object({
   taskSecs: z.number().int().min(5, "Task duration must be at least 5 seconds").max(120, "Task duration must be at most 120 seconds").optional(),
   doorSecs: z.number().int().min(2, "Door screen must be at least 2 seconds").max(30, "Door screen must be at most 30 seconds").optional(),
   sabotageSecs: z.number().int().min(10, "Sabotage timer must be at least 10 seconds").max(300, "Sabotage timer must be at most 300 seconds").optional(),
+  sabotageCooldownSecs: z.number().int().min(0, "Sabotage cooldown can't be negative").max(600, "Sabotage cooldown must be at most 600 seconds").optional(),
+  sabotageRooms: z.array(z.string().trim().min(1, "Room name can't be empty").max(80, "Room name is too long")).max(30, "At most 30 sabotage rooms").optional(),
 });
 
 export async function POST(req: Request) {
@@ -62,6 +64,8 @@ export async function POST(req: Request) {
   if (data.taskSecs !== undefined) updates.task_secs = data.taskSecs;
   if (data.doorSecs !== undefined) updates.door_secs = data.doorSecs;
   if (data.sabotageSecs !== undefined) updates.sabotage_secs = data.sabotageSecs;
+  if (data.sabotageCooldownSecs !== undefined) updates.sabotage_cooldown_secs = data.sabotageCooldownSecs;
+  if (data.sabotageRooms !== undefined) updates.sabotage_rooms = data.sabotageRooms;
 
   if (Object.keys(updates).length === 0) {
     return json({ ok: true });

@@ -148,6 +148,9 @@ export async function POST(req: Request) {
       here_count: 0,
       expected_here: 0,
       votes_cast: 0,
+      sabotage_target: null,
+      sabotage_ready_at: null,
+      sabotage_carry_secs: 0,
     })
     .eq("code", code);
   if (updateError) {

@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { errorJson, json, resolvePlayer } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { checkWin, endGame, recomputeTaskCounters } from "@/lib/game";
@@ -38,6 +39,12 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (roleRow?.role === "imposter") {
+      // Universal cooldown across all imposters. A press during cooldown is swallowed
+      // silently — the response stays byte-identical, so nothing on screen betrays it.
+      if (room.sabotage_ready_at && new Date(room.sabotage_ready_at).getTime() > Date.now()) {
+        return json({ ok: true });
+      }
+
       // Secret sabotage trigger. The response below is identical to a crewmate's death
       // report — the server is the only place that knows the difference (invariant: the
       // client never branches on role for this button, and no caller is ever recorded).
@@ -55,6 +62,9 @@ export async function POST(req: Request) {
         .in("player_id", idFilter);
       const expectedHere = (secretRows ?? []).filter((s) => s.is_alive).length;
 
+      const pool: string[] = room.sabotage_rooms ?? [];
+      const target = pool.length > 0 ? pool[randomInt(0, pool.length)] : null;
+
       // Conditional claim: a simultaneous meeting call wins the race and this becomes a
       // no-op; either way the caller learns nothing from the response.
       await admin
@@ -64,6 +74,7 @@ export async function POST(req: Request) {
           phase_ends_at: new Date(Date.now() + room.sabotage_secs * 1000).toISOString(),
           here_count: 0,
           expected_here: expectedHere,
+          sabotage_target: target,
         })
         .eq("code", code)
         .eq("phase", "playing");
@@ -106,7 +117,15 @@ export async function POST(req: Request) {
       } else {
         await admin
           .from("rooms")
-          .update({ phase: "playing", phase_ends_at: null, here_count: 0, expected_here: 0 })
+          .update({
+            phase: "playing",
+            phase_ends_at: null,
+            here_count: 0,
+            expected_here: 0,
+            sabotage_target: null,
+            sabotage_ready_at: new Date(Date.now() + room.sabotage_cooldown_secs * 1000).toISOString(),
+            sabotage_carry_secs: 0,
+          })
           .eq("code", code)
           .eq("phase", "sabotage");
       }

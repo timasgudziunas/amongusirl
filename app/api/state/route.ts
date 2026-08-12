@@ -86,6 +86,8 @@ export async function GET(req: Request) {
         taskSecs: room.task_secs,
         doorSecs: room.door_secs,
         sabotageSecs: room.sabotage_secs,
+        sabotageCooldownSecs: room.sabotage_cooldown_secs,
+        sabotageRooms: room.sabotage_rooms ?? [],
       },
       validation,
     });
@@ -128,6 +130,7 @@ export async function GET(req: Request) {
       hereCount: room.here_count,
       expectedHere: room.expected_here,
       phaseEndsAt: room.phase_ends_at,
+      sabotageRoom: room.sabotage_target,
     });
   }
 

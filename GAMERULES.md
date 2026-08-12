@@ -84,18 +84,26 @@ this file wins and PLAN.md should be corrected.
 
 ## Sabotage
 
-- **Before the game, the group agrees on one room in the house as the sabotage room.**
+- **The host authors a pool of sabotage rooms in the lobby**, instead of the group
+  agreeing on a single fixed room. Each sabotage picks one room from that pool at
+  random — it can differ between sabotages in the same round — and every phone shows
+  which room was picked.
 - **A living imposter can secretly trigger a sabotage from the same "I was killed" button
   crewmates use.** The app shows no difference between roles on this button, and it never
   reveals who triggered it.
 - Every phone shows a full-screen sabotage alarm with a countdown (a host setting,
-  defaulting to 30 seconds). **Everyone still alive, crew and imposters alike, must walk
-  to the sabotage room and tap "I AM HERE."**
+  defaulting to 30 seconds) and the randomly picked room. **Everyone still alive, crew
+  and imposters alike, must walk to that room and tap "I AM HERE."**
 - Players killed on the way self-report from the alarm screen, same as during a gathering.
 - **When everyone alive has checked in, the alarm ends and play resumes.**
 - **Anyone who hasn't checked in when the timer hits zero is eliminated automatically** —
   crew and imposters alike. These deaths are not bodies lying in the house; they can't be
   reported.
+- **There is a universal cooldown between sabotages** (a host setting, defaulting to 60
+  seconds, 0 disables it), shared by all imposters — not a separate cooldown per
+  imposter. It only counts down during live play; if a meeting interrupts play, the
+  remaining cooldown is paused and resumes once play does. Pressing the trigger button
+  during the cooldown does nothing at all, with no visible hint that it was blocked.
 
 ## Bodies and meetings
 

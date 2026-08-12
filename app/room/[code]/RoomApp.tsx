@@ -38,6 +38,7 @@ type SabotageState = {
   hereCount: number;
   expectedHere: number;
   phaseEndsAt: string | null;
+  sabotageRoom: string | null;
 };
 
 type MeetingRosterEntry = { playerId: string; name: string; isAlive: boolean };
@@ -693,7 +694,9 @@ export default function RoomApp({ code }: { code: string }) {
         <div className="au-pulse fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 px-6 text-center">
           <h1 className="text-4xl font-bold">SABOTAGE</h1>
           <p className="text-7xl font-bold tabular-nums">{remaining}</p>
-          <h1 className="text-3xl font-bold">WALK TO THE SABOTAGE ROOM</h1>
+          <h1 className="text-3xl font-bold">
+            {state.sabotageRoom ? `GO TO: ${state.sabotageRoom.toUpperCase()}` : "WALK TO THE SABOTAGE ROOM"}
+          </h1>
           <p className="text-xl">
             {state.hereCount}/{state.expectedHere}
           </p>
@@ -717,6 +720,7 @@ export default function RoomApp({ code }: { code: string }) {
         <p className="text-xl">
           {dead ? "Waiting" : `Waiting for others (${state.hereCount}/${state.expectedHere})`}
         </p>
+        {state.sabotageRoom && <p className="au-dim">{state.sabotageRoom}</p>}
       </main>
     );
   }

@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
   const { data: room, error: roomError } = await admin
     .from("rooms")
-    .select("phase, meeting_secs, expected_here")
+    .select("phase, meeting_secs, expected_here, sabotage_cooldown_secs")
     .eq("code", code)
     .maybeSingle();
   if (roomError || !room) {
@@ -62,7 +62,15 @@ export async function POST(req: Request) {
     } else {
       await admin
         .from("rooms")
-        .update({ phase: "playing", phase_ends_at: null, here_count: 0, expected_here: 0 })
+        .update({
+          phase: "playing",
+          phase_ends_at: null,
+          here_count: 0,
+          expected_here: 0,
+          sabotage_target: null,
+          sabotage_ready_at: new Date(Date.now() + room.sabotage_cooldown_secs * 1000).toISOString(),
+          sabotage_carry_secs: 0,
+        })
         .eq("code", code)
         .eq("phase", "sabotage");
     }

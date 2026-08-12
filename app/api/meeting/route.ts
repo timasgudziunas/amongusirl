@@ -94,6 +94,12 @@ export async function POST(req: Request) {
     .in("player_id", idFilter);
   const expectedHere = (secretRows ?? []).filter((s) => s.is_alive).length;
 
+  // Pause the sabotage cooldown for the duration of the meeting: bank the remainder,
+  // /tick re-arms it when play resumes.
+  const sabotageCarrySecs = room.sabotage_ready_at
+    ? Math.max(0, Math.ceil((new Date(room.sabotage_ready_at).getTime() - Date.now()) / 1000))
+    : 0;
+
   const { data: claimed } = await admin
     .from("rooms")
     .update({
@@ -105,6 +111,8 @@ export async function POST(req: Request) {
       expected_here: expectedHere,
       here_count: 0,
       phase_ends_at: new Date(Date.now() + room.gathering_secs * 1000).toISOString(),
+      sabotage_ready_at: null,
+      sabotage_carry_secs: sabotageCarrySecs,
     })
     .eq("code", code)
     .eq("phase", "playing")

@@ -224,6 +224,9 @@ export const LOBBY_RESET_FIELDS = {
   reported_body_name: null,
   meeting_caller_name: null,
   meeting_no: 0,
+  sabotage_target: null,
+  sabotage_ready_at: null,
+  sabotage_carry_secs: 0,
 } as const;
 
 /**

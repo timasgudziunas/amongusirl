@@ -62,7 +62,15 @@ export async function POST(req: Request) {
   } else if (phase === "sabotage" && timerExpired) {
     const { data: claimed } = await admin
       .from("rooms")
-      .update({ phase: "playing", phase_ends_at: null, here_count: 0, expected_here: 0 })
+      .update({
+        phase: "playing",
+        phase_ends_at: null,
+        here_count: 0,
+        expected_here: 0,
+        sabotage_target: null,
+        sabotage_ready_at: new Date(nowMs + room.sabotage_cooldown_secs * 1000).toISOString(),
+        sabotage_carry_secs: 0,
+      })
       .eq("code", code)
       .eq("phase", "sabotage")
       .lt("phase_ends_at", nowIso)
@@ -132,6 +140,11 @@ export async function POST(req: Request) {
           here_count: 0,
           expected_here: 0,
           votes_cast: 0,
+          sabotage_ready_at:
+            room.sabotage_carry_secs > 0
+              ? new Date(nowMs + room.sabotage_carry_secs * 1000).toISOString()
+              : null,
+          sabotage_carry_secs: 0,
         })
         .eq("code", code)
         .eq("phase", "results")
