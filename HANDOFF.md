@@ -1,4 +1,4 @@
-# HANDOFF.md — Session Handoff (updated 2026-08-12 ~00:35 UTC, supersedes all 2026-08-11 and earlier versions)
+# HANDOFF.md — Session Handoff (updated 2026-08-12 ~01:15 UTC, supersedes all 2026-08-11 and earlier versions)
 
 > For a fresh Claude session with no memory of prior conversations: read this file first,
 > then the repo CLAUDE.md (rules + security invariants), then GAMERULES.md if touching
@@ -9,11 +9,14 @@
 
 - Game is **live and played**: first real game night (2026-08-10 or so) "worked
   perfectly" per the owner. Production: **https://amongusirl-phi.vercel.app**.
-- Latest commit `69007c3` (sabotage) deployed to production, state READY, and
-  E2E smoke-tested live 00:30 UTC 08-12: 21/21 checks green (room Y3UN) — trigger
-  secrecy, early resolve on all-checked-in, timeout auto-kill, no bodies-list leak.
-- DB migrations applied to live: `rooms.task_secs` (15), `rooms.door_secs` (5),
-  `rooms.meeting_caller_name` (nullable), `rooms.sabotage_secs` (30).
+- Latest commit `867ad3a` (sabotage room pool + universal cooldown) deployed to
+  production and E2E smoke-tested live 01:10 UTC 08-12: 21/21 green (room 3QT6) —
+  pool echo in lobby settings, random draw per trigger (two draws differed), silent
+  cooldown swallow, post-cooldown re-trigger, timeout auto-kill, no bodies-list leak.
+- DB migrations applied to live: `task_secs` (15), `door_secs` (5),
+  `meeting_caller_name`, `sabotage_secs` (30), `sabotage_rooms` (text[]),
+  `sabotage_target`, `sabotage_cooldown_secs` (60), `sabotage_ready_at`,
+  `sabotage_carry_secs`.
 - Supabase CLI is now **linked** on this machine (login + link done by owner in own
   terminal 2026-08-11; DB password in Windows keyring). `npx supabase db push` works
   non-interactively from this repo. `supabase/.temp/` is gitignored.
@@ -31,8 +34,15 @@
   bodies), then win check.
 - No caller attribution anywhere (deliberate — unlike meetings). `/api/state`
   sabotage payload is counts + deadline only.
-- Known accepted quirk: no cooldown/limit — an imposter can retrigger sabotage
-  immediately after one resolves. Social-contract territory; flag to owner if abused.
+- `867ad3a` added on top: host-authored **sabotage room pool** (`sabotage_rooms`
+  text[], edited in a new "Sabotage" settings group), server-side `randomInt` draw
+  per trigger stored in `sabotage_target` and shown on every overlay ("GO TO: X";
+  generic text if the pool is empty), and a **universal cooldown** (`sabotage_
+  cooldown_secs`, default 60, 0 = off, all imposters share it). Cooldown counts only
+  during `playing`: /api/meeting banks the remainder into `sabotage_carry_secs`,
+  /tick's results->playing re-arms it; each sabotage resolution re-arms a full
+  cooldown; start-round and lobby reset clear all three fields. A press during
+  cooldown returns a silent `{ok:true}` no-op with zero side effects.
 
 ## Earlier this session (commit `f3b0337`)
 
@@ -63,11 +73,10 @@
 
 1. Owner opens host screen + a player profile on the live site and eyeballs the new
    grouped settings and (with a test round) the sabotage overlay.
-2. Next game night: agree on the sabotage room as a group before starting (GAMERULES
-   has the new Sabotage section).
+2. Next game night: host authors the sabotage room pool in the lobby (Sabotage
+   settings group). GAMERULES has the updated Sabotage section.
 3. Still-unbuilt niceties from Phase 6: QR code on host page, nicer end screen.
-4. Declined for now (offer stands): per-player emergency-meeting count setting;
-   sabotage cooldown/limit if retrigger spam becomes a problem.
+4. Declined for now (offer stands): per-player emergency-meeting count setting.
 
 ## Open decisions / blockers
 
@@ -101,11 +110,11 @@
    run it with network access.
 4. Supabase CLI login cannot run in the in-session shell (non-TTY) — owner runs
    `npx supabase login` / `link` in a real terminal; after that `db push` works here.
-5. Stale junk rooms in live DB (NUE7, Q42Q, RL92 from 08-07 testing; 7HEP and Y3UN
-   from 08-11/12 smoke tests) — harmless, no delete endpoint exists; ignore them.
-6. The API now selects `task_secs`/`door_secs`/`meeting_caller_name`/`sabotage_secs`
-   — code deployed without those migrations hard-breaks the API. Always `db push`
-   before `git push`.
+5. Stale junk rooms in live DB (NUE7, Q42Q, RL92 from 08-07 testing; 7HEP, Y3UN,
+   X7QC, 3QT6 from 08-11/12 smoke tests) — harmless, no delete endpoint; ignore.
+6. The API selects every `sabotage_*`, `task_secs`, `door_secs`, and
+   `meeting_caller_name` column — code deployed without the matching migrations
+   hard-breaks the API. Always `db push` before `git push`.
 7. Role secrecy in the sabotage flow lives entirely in `/api/dead`'s server-side
    branch. Never add client-side role branching to that button, and never add a
    separate sabotage endpoint — the identical request IS the secrecy.
